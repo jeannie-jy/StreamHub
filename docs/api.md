@@ -90,7 +90,7 @@ Authorization: Bearer <accessToken>
 | GET | /api/v1/wallet | 是 | 查询虚拟金币余额 |
 | POST | /api/v1/wallet/recharge | 是 | 幂等充值 |
 | POST | /api/v1/live/rooms/{roomId}/gifts | 是 | 创建异步送礼订单 |
-| GET | /api/v1/gift-orders/{orderNo} | 否 | 查询送礼订单 |
+| GET | /api/v1/gift-orders/{orderNo} | 是 | 查询送礼订单 |
 | GET | /api/v1/live/rooms/{roomId}/gift-rank?limit=10 | 否 | 贡献榜 |
 | GET | /api/v1/live/rooms/{roomId}/gift-income-rank?limit=10 | 否 | 主播收益榜 |
 
@@ -114,7 +114,7 @@ Authorization: Bearer <accessToken>
 | POST | /api/v1/activities/{activityId}/start | 是 | 启动活动并预热 Redis 库存 |
 | GET | /api/v1/activities/{activityId} | 否 | 查询活动 |
 | POST | /api/v1/activities/{activityId}/seckill | 是 | 一人一单抢购 |
-| GET | /api/v1/activity-orders/{orderNo} | 否 | 查询活动订单 |
+| GET | /api/v1/activity-orders/{orderNo} | 是 | 查询活动订单 |
 
 活动时间使用 UTC ISO-8601。抢购请求：
 

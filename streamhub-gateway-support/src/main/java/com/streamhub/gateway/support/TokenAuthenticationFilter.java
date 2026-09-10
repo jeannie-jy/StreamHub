@@ -7,6 +7,7 @@ import java.time.Instant;
 import org.springframework.core.Ordered;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpRequest;
@@ -35,7 +36,8 @@ public class TokenAuthenticationFilter implements GlobalFilter, Ordered {
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         String path = exchange.getRequest().getURI().getPath();
         String authorization = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
-        if (isPublic(path) || (path.startsWith("/ws/") && !StringUtils.hasText(authorization))) {
+        if (isPublic(path, exchange.getRequest().getMethod())
+                || (path.startsWith("/ws/") && !StringUtils.hasText(authorization))) {
             return chain.filter(exchange);
         }
         if (!isBearerToken(authorization)) {
@@ -62,13 +64,28 @@ public class TokenAuthenticationFilter implements GlobalFilter, Ordered {
         return -100;
     }
 
-    private boolean isPublic(String path) {
-        return path.startsWith("/actuator/")
+    private boolean isPublic(String path, HttpMethod method) {
+        if (path.startsWith("/actuator/")
                 || "/api/v1/auth/register".equals(path)
                 || "/api/v1/auth/login".equals(path)
                 || "/api/v1/auth/ping".equals(path)
                 || "/api/v1/gifts".equals(path)
-                || "/api/v1/live/ping".equals(path);
+                || "/api/v1/live/ping".equals(path)) {
+            return true;
+        }
+        return HttpMethod.GET.equals(method)
+                && ("/api/v1/users/ping".equals(path)
+                        || numericIdPath(path, "/api/v1/users/")
+                        || numericIdPath(path, "/api/v1/live/rooms/")
+                        || path.matches("/api/v1/live/rooms/\\d+/messages")
+                        || path.matches("/api/v1/live/rooms/\\d+/gift-rank")
+                        || path.matches("/api/v1/live/rooms/\\d+/gift-income-rank")
+                        || numericIdPath(path, "/api/v1/activities/"));
+    }
+
+    private boolean numericIdPath(String path, String prefix) {
+        return path.startsWith(prefix)
+                && path.substring(prefix.length()).matches("\\d+");
     }
 
     private boolean isBearerToken(String authorization) {

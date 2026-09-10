@@ -94,4 +94,4 @@ ORDER BY id;
 遗留问题：
 ~~~
 
-真实压测和故障演练结果写入 performance-baseline.md。当前仓库只提交了脚本和记录模板，未伪造本机 Docker 引擎不可用时的结果。
+真实压测和故障演练结果写入 performance-baseline.md。当前已记录秒杀、WebSocket、Redis 派生数据修复、Live 节点重启和 RocketMQ 中断恢复结果；Redis 完全不可用时的实时广播降级仍建议在独立环境重复验证，避免影响本地持久化数据。

@@ -44,8 +44,8 @@ Java 服务只负责控制面、互动消息和交易业务。观看规模的扩
 | live:room:{roomId}:online | ZSet | 用户心跳时间和在线人数 |
 | live:room:{roomId}:gift:contributors | ZSet | 房间贡献榜 |
 | live:room:{roomId}:gift:income | ZSet | 主播收益榜 |
-| live:activity:{activityId}:stock | String | 活动库存 |
-| live:activity:{activityId}:users | Set | 一人一单校验 |
+| activity:{activityId}:stock | String | 活动库存 |
+| activity:{activityId}:users | Set | 一人一单校验 |
 | live:room:{roomId}:broadcast:rate | String | 普通弹幕秒级广播保护 |
 | configured channel | Pub/Sub | Chat、Gift、Activity 实时事件 |
 

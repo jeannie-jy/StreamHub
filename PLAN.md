@@ -298,7 +298,7 @@ Redis 只承担热点状态、原子校验和实时广播辅助职责。Redis Pu
 - [x] Phase 2：礼物和实时互动
 - [x] Phase 3：高并发活动
 - [x] Phase 4：微服务化和多节点实时网关
-- [ ] Phase 5：工程化、压测和故障演练
+- [x] Phase 5：工程化、压测和故障演练
 
 Phase 0 已完成：工程骨架、公共组件、本地依赖编排、数据库基线和基础启动检查均已验证。
 
@@ -308,4 +308,6 @@ Phase 2 已完成：虚拟金币充值、礼物目录、RocketMQ 异步送礼订
 
 Phase 3 已完成：活动创建/启动、Redis Lua 库存与一人一单原子预扣、RocketMQ 异步订单、延迟关闭消息、MySQL 唯一约束、库存回补和活动订单事件均已实现，并完成双库存抢购、重复参与、库存耗尽、积压消息重启恢复和新消息即时消费验证。
 
-Phase 4 已完成并通过运行验收：新增独立 API Gateway，接入 Spring Cloud LoadBalancer、Nacos 服务发现和 Nacos Config；新增基于 Reactor Netty 的 Realtime Gateway，专门代理 WebSocket 长连接并复用 Auth Token 鉴权；认证、用户、直播、礼物、钱包和活动 HTTP 接口通过 `8088` 访问，WebSocket 通过 `8090` 访问，API Gateway 会通过 Auth 服务校验 Bearer Token 并注入可信用户身份；直播服务已抽出房间会话注册表，并用 Redis Pub/Sub 完成两个 Live 实例的跨节点弹幕广播验证；直播服务创建房间已通过 OpenFeign + Nacos 调用 User 服务校验主播身份；已增加单房间连接上限、普通弹幕速率保护和 Micrometer 广播计数。Phase 5 已加入 Prometheus/Grafana 配置、广播指标、k6 脚本、API/架构/时序图/一致性/面试/故障演练文档，并完成本地秒杀与 WebSocket 基线压测；MQ/Redis 故障演练记录仍待补齐。
+Phase 4 已完成并通过运行验收：新增独立 API Gateway，接入 Spring Cloud LoadBalancer、Nacos 服务发现和 Nacos Config；新增基于 Reactor Netty 的 Realtime Gateway，专门代理 WebSocket 长连接并复用 Auth Token 鉴权；认证、用户、直播、礼物、钱包和活动 HTTP 接口通过 `8088` 访问，WebSocket 通过 `8090` 访问，API Gateway 会通过 Auth 服务校验 Bearer Token 并注入可信用户身份；直播服务已抽出房间会话注册表，并用 Redis Pub/Sub 完成两个 Live 实例的跨节点弹幕广播验证；直播服务创建房间已通过 OpenFeign + Nacos 调用 User 服务校验主播身份；已增加单房间连接上限、普通弹幕速率保护和 Micrometer 广播计数。
+
+Phase 5 已完成并通过本地验收：Prometheus/Grafana 仪表盘、k6 秒杀和 WebSocket 脚本、API/架构/时序图/一致性/面试/故障演练文档均已加入；秒杀与 WebSocket 基线压测已记录 p95、业务成功数和异常状态率；已验证 Redis 榜单/库存自动修复、Live 节点摘除重启、RocketMQ 中断后的 PENDING 重试与重复消息幂等。连接池、线程池、JVM 和慢 SQL 的当前基线与检查命令见 `docs/tuning-baseline.md`。后续增强方向是显式死信队列、分库分表和更大规模的独立压测环境。
