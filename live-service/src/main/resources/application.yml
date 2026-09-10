@@ -36,6 +36,9 @@ streamhub:
   media:
     rtmp-publish-base: ${MEDIA_RTMP_PUBLISH_BASE:rtmp://localhost:1935/live/}
     http-flv-play-base: ${MEDIA_HTTP_FLV_PLAY_BASE:http://localhost:8080/live/}
+  realtime:
+    channel: ${STREAMHUB_REALTIME_CHANNEL:live:room:events}
+    node-id: ${STREAMHUB_NODE_ID:local}
   rocketmq:
     namesrv-addr: ${ROCKETMQ_NAMESRV_ADDR:localhost:9876}
     gift-topic: ${ROCKETMQ_GIFT_TOPIC:STREAMHUB_GIFT_ORDER}

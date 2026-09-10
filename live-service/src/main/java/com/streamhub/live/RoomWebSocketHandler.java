@@ -3,7 +3,6 @@ package com.streamhub.live;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,18 +22,23 @@ public class RoomWebSocketHandler extends TextWebSocketHandler {
     private final LiveRoomRepository liveRoomRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final OnlinePresenceService onlinePresenceService;
-    private final Map<Long, Set<WebSocketSession>> sessionsByRoom = new ConcurrentHashMap<>();
+    private final RoomSessionRegistry roomSessionRegistry;
+    private final RoomBroadcastService roomBroadcastService;
     private final Map<Long, Long> lastMessageAtByUser = new ConcurrentHashMap<>();
 
     public RoomWebSocketHandler(
             ObjectMapper objectMapper,
             LiveRoomRepository liveRoomRepository,
             ChatMessageRepository chatMessageRepository,
-            OnlinePresenceService onlinePresenceService) {
+            OnlinePresenceService onlinePresenceService,
+            RoomSessionRegistry roomSessionRegistry,
+            RoomBroadcastService roomBroadcastService) {
         this.objectMapper = objectMapper;
         this.liveRoomRepository = liveRoomRepository;
         this.chatMessageRepository = chatMessageRepository;
         this.onlinePresenceService = onlinePresenceService;
+        this.roomSessionRegistry = roomSessionRegistry;
+        this.roomBroadcastService = roomBroadcastService;
     }
 
     @Override
@@ -49,7 +53,7 @@ public class RoomWebSocketHandler extends TextWebSocketHandler {
 
         session.getAttributes().put("roomId", roomId);
         session.getAttributes().put("userId", userId);
-        sessionsByRoom.computeIfAbsent(roomId, ignored -> ConcurrentHashMap.newKeySet()).add(session);
+        roomSessionRegistry.add(roomId, session);
         onlinePresenceService.join(roomId, userId);
         send(session, Map.of(
                 "type", "CONNECTED",
@@ -101,7 +105,7 @@ public class RoomWebSocketHandler extends TextWebSocketHandler {
                 userId,
                 command.clientMessageId(),
                 command.content().trim());
-        broadcast(roomId, Map.of(
+        roomBroadcastService.publish(roomId, Map.of(
                 "type", "CHAT",
                 "id", saved.id(),
                 "roomId", saved.roomId(),
@@ -116,13 +120,7 @@ public class RoomWebSocketHandler extends TextWebSocketHandler {
         Long roomId = attributeAsLong(session, "roomId");
         Long userId = attributeAsLong(session, "userId");
         if (roomId != null) {
-            Set<WebSocketSession> sessions = sessionsByRoom.get(roomId);
-            if (sessions != null) {
-                sessions.remove(session);
-                if (sessions.isEmpty()) {
-                    sessionsByRoom.remove(roomId, sessions);
-                }
-            }
+            roomSessionRegistry.remove(roomId, session);
         }
         if (roomId != null && userId != null) {
             onlinePresenceService.leave(roomId, userId);
@@ -130,23 +128,7 @@ public class RoomWebSocketHandler extends TextWebSocketHandler {
     }
 
     public void broadcastEvent(long roomId, Map<String, Object> payload) {
-        try {
-            broadcast(roomId, payload);
-        } catch (IOException exception) {
-            throw new IllegalStateException("广播房间事件失败", exception);
-        }
-    }
-
-    private void broadcast(long roomId, Map<String, Object> payload) throws IOException {
-        String body = objectMapper.writeValueAsString(payload);
-        Set<WebSocketSession> sessions = sessionsByRoom.getOrDefault(roomId, Set.of());
-        for (WebSocketSession session : sessions) {
-            if (session.isOpen()) {
-                synchronized (session) {
-                    session.sendMessage(new TextMessage(body));
-                }
-            }
-        }
+        roomBroadcastService.publish(roomId, payload);
     }
 
     private void send(WebSocketSession session, Map<String, Object> payload) throws IOException {

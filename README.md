@@ -69,6 +69,8 @@ ws://localhost:8088/ws/chat?roomId={roomId}&userId={userId}
 
 直接访问直播服务进行排查时，也可以使用 `ws://localhost:8083/ws/chat`。Nacos 地址和开关见 [.env.example](.env.example) 中的 `NACOS_SERVER_ADDR` 与 `NACOS_DISCOVERY_ENABLED`。
 
+直播服务实例使用 Redis Pub/Sub 的 `STREAMHUB_REALTIME_CHANNEL` 广播聊天、礼物和活动事件；每个实例只向自己持有的 WebSocket 连接发送消息。通过 `STREAMHUB_NODE_ID` 设置实例标识，便于日志和多节点排查。
+
 发送弹幕：
 
 ```json
