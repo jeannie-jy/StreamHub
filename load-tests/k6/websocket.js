@@ -17,9 +17,15 @@ export const options = {
 const websocketUrl = __ENV.WS_URL || 'ws://localhost:8090';
 const roomId = __ENV.ROOM_ID || '1';
 const userId = __ENV.USER_ID || `${__VU}`;
-const accessToken = __ENV.ACCESS_TOKEN;
+const accessTokens = (__ENV.ACCESS_TOKENS || __ENV.ACCESS_TOKEN || '')
+  .split(',')
+  .map((token) => token.trim())
+  .filter(Boolean);
 
 export default function () {
+  const accessToken = accessTokens.length
+    ? accessTokens[(__VU - 1) % accessTokens.length]
+    : undefined;
   const url = `${websocketUrl}/ws/chat?roomId=${roomId}&userId=${userId}`;
   const params = {
     headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
