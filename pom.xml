@@ -20,6 +20,7 @@
 
     <modules>
         <module>streamhub-common</module>
+        <module>database-migrations</module>
         <module>auth-service</module>
         <module>user-service</module>
         <module>live-service</module>

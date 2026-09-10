@@ -9,6 +9,10 @@ spring:
   flyway:
     enabled: ${FLYWAY_ENABLED:true}
     locations: classpath:db/migration
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
 
 server:
   port: ${SERVER_PORT:8083}
@@ -22,3 +26,8 @@ management:
     health:
       probes:
         enabled: true
+
+streamhub:
+  media:
+    rtmp-publish-base: ${MEDIA_RTMP_PUBLISH_BASE:rtmp://localhost:1935/live/}
+    http-flv-play-base: ${MEDIA_HTTP_FLV_PLAY_BASE:http://localhost:8080/live/}
