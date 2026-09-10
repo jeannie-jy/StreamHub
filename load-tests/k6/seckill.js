@@ -24,6 +24,10 @@ const accessTokens = (__ENV.ACCESS_TOKENS || __ENV.ACCESS_TOKEN || '')
   .split(',')
   .map((token) => token.trim())
   .filter(Boolean);
+const userIds = (__ENV.USER_IDS || '')
+  .split(',')
+  .map((userId) => userId.trim())
+  .filter(Boolean);
 
 if (!activityId) {
   throw new Error('ACTIVITY_ID is required');
@@ -34,6 +38,9 @@ export default function () {
   const accessToken = accessTokens.length
     ? accessTokens[(__VU - 1) % accessTokens.length]
     : undefined;
+  const userId = userIds.length
+    ? userIds[(__VU - 1) % userIds.length]
+    : undefined;
   const response = http.post(
     `${baseUrl}/api/v1/activities/${activityId}/seckill`,
     JSON.stringify({ clientOrderNo: orderNo }),
@@ -41,6 +48,7 @@ export default function () {
       headers: {
         'Content-Type': 'application/json',
         ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        ...(!accessToken && userId ? { 'X-User-Id': userId } : {}),
       },
     },
   );

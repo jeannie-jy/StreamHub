@@ -24,4 +24,16 @@ k6 run load-tests/k6/websocket.js `
   -e DURATION=60s
 ```
 
-记录结果时同时保存 k6 输出和 Prometheus 指标，至少记录测试时间、VUS、持续时间、请求成功率、p95 延迟、WebSocket 握手成功率、广播丢弃计数和数据库/Redis/MQ 资源占用。脚本中的 400、409、429 是业务拒绝或保护结果，不能单独当作系统错误；压测报告需要另外统计业务成功数、库存剩余值和订单最终状态。
+ 记录结果时同时保存 k6 输出和 Prometheus 指标，至少记录测试时间、VUS、持续时间、请求成功率、p95 延迟、WebSocket 握手成功率、广播丢弃计数和数据库/Redis/MQ 资源占用。脚本中的 400、409、429 是业务拒绝或保护结果，不能单独当作系统错误；压测报告需要另外统计业务成功数、库存剩余值和订单最终状态。
+
+如果只做本机业务压测，可以让 k6 容器访问 Live 内部端口并使用已有测试用户 ID，避免把会话 Token 注入容器：
+
+```powershell
+docker run --rm --add-host host.docker.internal:host-gateway `
+  -v ${PWD}/load-tests/k6:/scripts:ro `
+  -e BASE_URL=http://host.docker.internal:8083 `
+  -e ACTIVITY_ID=1 -e USER_IDS=1,2,3,4 -e VUS=20 -e DURATION=30s `
+  grafana/k6:0.53.0 run /scripts/seckill.js
+```
+
+直接访问 8083 只适用于本地隔离环境；经过 API Gateway 的压测应由受信任的压测机传入 ACCESS_TOKENS。
