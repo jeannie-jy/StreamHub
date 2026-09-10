@@ -10,9 +10,9 @@
         <version>0.1.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>gateway-service</artifactId>
-    <name>gateway-service</name>
-    <description>StreamHub API and WebSocket gateway</description>
+    <artifactId>realtime-gateway</artifactId>
+    <name>realtime-gateway</name>
+    <description>StreamHub dedicated WebSocket gateway</description>
 
     <dependencies>
         <dependency>

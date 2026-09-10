@@ -1,4 +1,4 @@
-package com.streamhub.gateway;
+package com.streamhub.gateway.support;
 
 import org.springframework.cloud.client.loadbalancer.LoadBalanced;
 import org.springframework.context.annotation.Bean;

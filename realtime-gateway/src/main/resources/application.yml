@@ -1,6 +1,6 @@
 spring:
   application:
-    name: streamhub-gateway
+    name: streamhub-realtime-gateway
   config:
     import:
       - optional:nacos:streamhub-shared.yaml?group=${NACOS_CONFIG_GROUP:STREAMHUB}&refreshEnabled=true
@@ -15,27 +15,19 @@ spring:
         enabled: ${NACOS_CONFIG_ENABLED:true}
     gateway:
       routes:
-        - id: auth-service
-          uri: lb://streamhub-auth
+        - id: live-service-websocket
+          uri: lb:ws://streamhub-live
           predicates:
-            - Path=/api/v1/auth/**
-        - id: user-service
-          uri: lb://streamhub-user
-          predicates:
-            - Path=/api/v1/users/**
-        - id: live-service-api
-          uri: lb://streamhub-live
-          predicates:
-            - Path=/api/v1/live/**,/api/v1/gifts,/api/v1/wallet/**,/api/v1/activities/**,/api/v1/gift-orders/**,/api/v1/activity-orders/**
+            - Path=/ws/**
 
 server:
-  port: ${SERVER_PORT:8088}
+  port: ${REALTIME_GATEWAY_PORT:8090}
 
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,gateway
+        include: health,info
   endpoint:
     health:
       probes:

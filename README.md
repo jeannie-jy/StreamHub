@@ -2,7 +2,7 @@
 
 基于 Spring Boot 微服务架构的高并发直播互动与虚拟礼物平台。
 
-项目计划见 [PLAN.md](PLAN.md)。当前已完成 Phase 0、Phase 1、Phase 2 和 Phase 3，Phase 4 已接入 API Gateway 与 Nacos 服务发现。
+项目计划见 [PLAN.md](PLAN.md)。当前已完成 Phase 0、Phase 1、Phase 2 和 Phase 3，Phase 4 已接入 API Gateway、独立实时网关与 Nacos 服务发现。
 
 ## 本地启动
 
@@ -13,13 +13,14 @@ docker compose up -d
 mvn clean verify
 ```
 
-启动四个服务：
+启动五个服务：
 
 ```powershell
 mvn -pl auth-service spring-boot:run
 mvn -pl user-service spring-boot:run
 mvn -pl live-service spring-boot:run
 mvn -pl gateway-service spring-boot:run
+mvn -pl realtime-gateway spring-boot:run
 ```
 
 网关默认监听 `8088`，通过 Nacos 发现三个业务服务。统一入口示例：
@@ -62,13 +63,13 @@ Invoke-RestMethod "http://localhost:8088/api/v1/live/rooms/$roomId/start" -Metho
 
 开播响应会返回 SRS RTMP 推流地址和 HTTP-FLV 播放地址。经 Gateway 访问写接口时使用 `Authorization: Bearer {accessToken}`；Gateway 调用 Auth 服务校验 Token 后覆盖传入的 `X-User-Id`。直接访问业务服务进行本地排查时仍支持 `X-User-Id`。
 
-WebSocket 弹幕地址（统一入口）：
+WebSocket 弹幕地址（独立实时网关）：
 
 ```text
-ws://localhost:8088/ws/chat?roomId={roomId}&userId={userId}
+ws://localhost:8090/ws/chat?roomId={roomId}&userId={userId}
 ```
 
-直接访问直播服务进行排查时，也可以使用 `ws://localhost:8083/ws/chat`。Nacos 地址、配置中心开关和配置分组见 [.env.example](.env.example) 中的 `NACOS_SERVER_ADDR`、`NACOS_DISCOVERY_ENABLED`、`NACOS_CONFIG_ENABLED` 与 `NACOS_CONFIG_GROUP`。
+连接 Realtime Gateway 时可以附带 `Authorization: Bearer {accessToken}`，网关会用 Token 覆盖查询参数中的 `userId`；未带 Token 时保留本地 MVP 的查询参数鉴权方式。直接访问直播服务进行排查时，也可以使用 `ws://localhost:8083/ws/chat`。API Gateway `8088` 专注 HTTP，Realtime Gateway `8090` 专注 WebSocket 长连接。Nacos 地址、配置中心开关和配置分组见 [.env.example](.env.example) 中的 `NACOS_SERVER_ADDR`、`NACOS_DISCOVERY_ENABLED`、`NACOS_CONFIG_ENABLED` 与 `NACOS_CONFIG_GROUP`。
 
 直播服务实例使用 Redis Pub/Sub 的 `STREAMHUB_REALTIME_CHANNEL` 广播聊天、礼物和活动事件；每个实例只向自己持有的 WebSocket 连接发送消息。通过 `STREAMHUB_NODE_ID` 设置实例标识，便于日志和多节点排查。
 

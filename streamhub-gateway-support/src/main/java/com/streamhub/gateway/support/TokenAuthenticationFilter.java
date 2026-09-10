@@ -1,4 +1,4 @@
-package com.streamhub.gateway;
+package com.streamhub.gateway.support;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -106,7 +106,7 @@ public class TokenAuthenticationFilter implements GlobalFilter, Ordered {
         return exchange.getResponse().writeWith(Mono.just(exchange.getResponse().bufferFactory().wrap(body)));
     }
 
-    public record AuthSession(long userId, java.time.Instant expiresAt) {
+    public record AuthSession(long userId, Instant expiresAt) {
     }
 
     public record RemoteApiResponse<T>(
