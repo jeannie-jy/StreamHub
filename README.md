@@ -2,7 +2,7 @@
 
 基于 Spring Boot 微服务架构的高并发直播互动与虚拟礼物平台。
 
-项目计划见 [PLAN.md](PLAN.md)。当前已完成 Phase 0、Phase 1、Phase 2 和 Phase 3，Phase 4 已接入 API Gateway、独立实时网关与 Nacos 服务发现。
+项目计划见 [PLAN.md](PLAN.md)。当前已完成 Phase 0、Phase 1、Phase 2 和 Phase 3，Phase 4 已完成主要代码交付，Phase 5 已加入监控、压测脚本和工程化文档。
 
 ## 本地启动
 
@@ -76,6 +76,8 @@ ws://localhost:8090/ws/chat?roomId={roomId}&userId={userId}
 直播服务实例使用 Redis Pub/Sub 的 `STREAMHUB_REALTIME_CHANNEL` 广播聊天、礼物和活动事件；每个实例只向自己持有的 WebSocket 连接发送消息。通过 `STREAMHUB_NODE_ID` 设置实例标识，便于日志和多节点排查。单实例单房间连接数和普通弹幕广播速率分别由 `STREAMHUB_MAX_SESSIONS_PER_ROOM` 与 `STREAMHUB_MAX_CHAT_EVENTS_PER_SECOND` 限制，触发速率保护的弹幕仍保存在 MySQL，可通过历史接口补偿；广播计数可从 `/actuator/metrics` 观察。
 
 监控和压测：Prometheus 默认端口为 `9090`，Grafana 默认端口为 `3000`，面板配置见 `infra/grafana`；k6 命令和结果记录模板见 [load-tests/README.md](load-tests/README.md) 与 [docs/performance-baseline.md](docs/performance-baseline.md)。
+
+架构、API、时序图、数据一致性、故障演练和面试讲解见 [docs](docs/)。
 
 发送弹幕：
 
