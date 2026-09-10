@@ -57,4 +57,18 @@ public class UserAccountRepository {
                 userId,
                 Timestamp.from(expiresAt));
     }
+
+    public Optional<AuthSession> findActiveSession(String token, Instant now) {
+        List<AuthSession> sessions = jdbcTemplate.query(
+                "SELECT s.user_id, s.expires_at "
+                        + "FROM auth_session s "
+                        + "JOIN sys_user u ON u.id = s.user_id "
+                        + "WHERE s.token = ? AND s.expires_at > ? AND u.status = 'ACTIVE' LIMIT 1",
+                (resultSet, rowNum) -> new AuthSession(
+                        resultSet.getLong("user_id"),
+                        resultSet.getTimestamp("expires_at").toInstant()),
+                token,
+                Timestamp.from(now));
+        return sessions.stream().findFirst();
+    }
 }

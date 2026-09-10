@@ -308,4 +308,4 @@ Phase 2 已完成：虚拟金币充值、礼物目录、RocketMQ 异步送礼订
 
 Phase 3 已完成：活动创建/启动、Redis Lua 库存与一人一单原子预扣、RocketMQ 异步订单、延迟关闭消息、MySQL 唯一约束、库存回补和活动订单事件均已实现，并完成双库存抢购、重复参与、库存耗尽、积压消息重启恢复和新消息即时消费验证。
 
-Phase 4 已开始：新增独立 API Gateway，接入 Spring Cloud LoadBalancer 和 Nacos 服务发现，认证、用户、直播、礼物、钱包和活动 HTTP 接口以及 WebSocket 入口均可通过 `8088` 访问；直播服务已抽出房间会话注册表，并用 Redis Pub/Sub 完成两实例跨节点弹幕广播验证。下一步拆出实时网关并补齐配置中心、鉴权和广播保护。
+Phase 4 已开始：新增独立 API Gateway，接入 Spring Cloud LoadBalancer、Nacos 服务发现和 Nacos Config；认证、用户、直播、礼物、钱包和活动 HTTP 接口以及 WebSocket 入口均可通过 `8088` 访问，Gateway 会通过 Auth 服务校验 Bearer Token 并注入可信用户身份；直播服务已抽出房间会话注册表，并用 Redis Pub/Sub 完成两实例跨节点弹幕广播验证。下一步拆出实时网关并补齐 WebSocket 鉴权、广播保护和服务间调用。

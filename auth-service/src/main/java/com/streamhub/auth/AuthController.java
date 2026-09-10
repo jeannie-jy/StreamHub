@@ -12,6 +12,8 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.http.HttpHeaders;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -56,11 +58,31 @@ public class AuthController {
         return ApiResponse.success(createSession(user.id()));
     }
 
+    @PostMapping("/introspect")
+    public ApiResponse<AuthSession> introspect(
+            @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
+        String token = bearerToken(authorization);
+        AuthSession session = userAccountRepository.findActiveSession(token, Instant.now())
+                .orElseThrow(() -> new BusinessException(ErrorCode.UNAUTHORIZED, "Token 无效或已过期"));
+        return ApiResponse.success(session);
+    }
+
     private AuthTokenResponse createSession(long userId) {
         String token = UUID.randomUUID().toString().replace("-", "");
         Instant expiresAt = Instant.now().plus(SESSION_DURATION);
         userAccountRepository.createSession(token, userId, expiresAt);
         return new AuthTokenResponse(userId, token, expiresAt);
+    }
+
+    private String bearerToken(String authorization) {
+        if (authorization == null || !authorization.regionMatches(true, 0, "Bearer ", 0, 7)) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "缺少 Bearer Token");
+        }
+        String token = authorization.substring(7).trim();
+        if (token.isEmpty()) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "缺少 Bearer Token");
+        }
+        return token;
     }
 
     public record RegisterRequest(

@@ -46,20 +46,21 @@ Invoke-RestMethod http://localhost:8088/api/v1/gifts
 
 ```powershell
 $body = @{ username = 'demo001'; nickname = 'Demo'; password = 'password123' } | ConvertTo-Json
-Invoke-RestMethod http://localhost:8081/api/v1/auth/register -Method Post -ContentType 'application/json' -Body $body
+$registered = Invoke-RestMethod http://localhost:8088/api/v1/auth/register -Method Post -ContentType 'application/json' -Body $body
+$token = $registered.data.accessToken
+$headers = @{ Authorization = "Bearer $token" }
 ```
 
 创建并开始直播间：
 
 ```powershell
-$headers = @{ 'X-User-Id' = '1' }
 $roomBody = @{ title = 'Demo Room'; category = 'tech' } | ConvertTo-Json
-$room = Invoke-RestMethod http://localhost:8083/api/v1/live/rooms -Method Post -Headers $headers -ContentType 'application/json' -Body $roomBody
+$room = Invoke-RestMethod http://localhost:8088/api/v1/live/rooms -Method Post -Headers $headers -ContentType 'application/json' -Body $roomBody
 $roomId = $room.data.id
-Invoke-RestMethod "http://localhost:8083/api/v1/live/rooms/$roomId/start" -Method Post -Headers $headers
+Invoke-RestMethod "http://localhost:8088/api/v1/live/rooms/$roomId/start" -Method Post -Headers $headers
 ```
 
-开播响应会返回 SRS RTMP 推流地址和 HTTP-FLV 播放地址。当前 MVP 使用 `X-User-Id` 作为本地联调鉴权入口，注册/登录返回的 Token 已保存到 `auth_session`，统一 Token 校验将在后续网关化阶段接入。
+开播响应会返回 SRS RTMP 推流地址和 HTTP-FLV 播放地址。经 Gateway 访问写接口时使用 `Authorization: Bearer {accessToken}`；Gateway 调用 Auth 服务校验 Token 后覆盖传入的 `X-User-Id`。直接访问业务服务进行本地排查时仍支持 `X-User-Id`。
 
 WebSocket 弹幕地址（统一入口）：
 
@@ -67,7 +68,7 @@ WebSocket 弹幕地址（统一入口）：
 ws://localhost:8088/ws/chat?roomId={roomId}&userId={userId}
 ```
 
-直接访问直播服务进行排查时，也可以使用 `ws://localhost:8083/ws/chat`。Nacos 地址和开关见 [.env.example](.env.example) 中的 `NACOS_SERVER_ADDR` 与 `NACOS_DISCOVERY_ENABLED`。
+直接访问直播服务进行排查时，也可以使用 `ws://localhost:8083/ws/chat`。Nacos 地址、配置中心开关和配置分组见 [.env.example](.env.example) 中的 `NACOS_SERVER_ADDR`、`NACOS_DISCOVERY_ENABLED`、`NACOS_CONFIG_ENABLED` 与 `NACOS_CONFIG_GROUP`。
 
 直播服务实例使用 Redis Pub/Sub 的 `STREAMHUB_REALTIME_CHANNEL` 广播聊天、礼物和活动事件；每个实例只向自己持有的 WebSocket 连接发送消息。通过 `STREAMHUB_NODE_ID` 设置实例标识，便于日志和多节点排查。
 
