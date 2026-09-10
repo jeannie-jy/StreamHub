@@ -2,7 +2,7 @@
 
 基于 Spring Boot 微服务架构的高并发直播互动与虚拟礼物平台。
 
-项目计划见 [PLAN.md](PLAN.md)。当前已完成 Phase 0、Phase 1、Phase 2 和 Phase 3，正在进入微服务化与多节点实时网关建设。
+项目计划见 [PLAN.md](PLAN.md)。当前已完成 Phase 0、Phase 1、Phase 2 和 Phase 3，Phase 4 已接入 API Gateway 与 Nacos 服务发现。
 
 ## 本地启动
 
@@ -13,12 +13,22 @@ docker compose up -d
 mvn clean verify
 ```
 
-启动三个服务：
+启动四个服务：
 
 ```powershell
 mvn -pl auth-service spring-boot:run
 mvn -pl user-service spring-boot:run
 mvn -pl live-service spring-boot:run
+mvn -pl gateway-service spring-boot:run
+```
+
+网关默认监听 `8088`，通过 Nacos 发现三个业务服务。统一入口示例：
+
+```powershell
+Invoke-RestMethod http://localhost:8088/api/v1/auth/ping
+Invoke-RestMethod http://localhost:8088/api/v1/users/ping
+Invoke-RestMethod http://localhost:8088/api/v1/live/ping
+Invoke-RestMethod http://localhost:8088/api/v1/gifts
 ```
 
 基础检查接口：
@@ -51,11 +61,13 @@ Invoke-RestMethod "http://localhost:8083/api/v1/live/rooms/$roomId/start" -Metho
 
 开播响应会返回 SRS RTMP 推流地址和 HTTP-FLV 播放地址。当前 MVP 使用 `X-User-Id` 作为本地联调鉴权入口，注册/登录返回的 Token 已保存到 `auth_session`，统一 Token 校验将在后续网关化阶段接入。
 
-WebSocket 弹幕地址：
+WebSocket 弹幕地址（统一入口）：
 
 ```text
-ws://localhost:8083/ws/chat?roomId={roomId}&userId={userId}
+ws://localhost:8088/ws/chat?roomId={roomId}&userId={userId}
 ```
+
+直接访问直播服务进行排查时，也可以使用 `ws://localhost:8083/ws/chat`。Nacos 地址和开关见 [.env.example](.env.example) 中的 `NACOS_SERVER_ADDR` 与 `NACOS_DISCOVERY_ENABLED`。
 
 发送弹幕：
 

@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: streamhub-gateway
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        enabled: ${NACOS_DISCOVERY_ENABLED:true}
+    gateway:
+      routes:
+        - id: auth-service
+          uri: lb://streamhub-auth
+          predicates:
+            - Path=/api/v1/auth/**
+        - id: user-service
+          uri: lb://streamhub-user
+          predicates:
+            - Path=/api/v1/users/**
+        - id: live-service-api
+          uri: lb://streamhub-live
+          predicates:
+            - Path=/api/v1/live/**,/api/v1/gifts,/api/v1/wallet/**,/api/v1/activities/**,/api/v1/gift-orders/**,/api/v1/activity-orders/**
+        - id: live-service-websocket
+          uri: lb:ws://streamhub-live
+          predicates:
+            - Path=/ws/**
+
+server:
+  port: ${SERVER_PORT:8088}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway
+  endpoint:
+    health:
+      probes:
+        enabled: true

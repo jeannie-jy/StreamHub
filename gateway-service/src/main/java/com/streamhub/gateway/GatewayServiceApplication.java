@@ -1,13 +1,13 @@
-package com.streamhub.user;
+package com.streamhub.gateway;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
 
-@SpringBootApplication(scanBasePackages = "com.streamhub")
+@SpringBootApplication
 @EnableDiscoveryClient
-public class UserServiceApplication {
+public class GatewayServiceApplication {
     public static void main(String[] args) {
-        SpringApplication.run(UserServiceApplication.class, args);
+        SpringApplication.run(GatewayServiceApplication.class, args);
     }
 }
