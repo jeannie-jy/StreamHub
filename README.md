@@ -2,7 +2,7 @@
 
 基于 Spring Boot 微服务架构的高并发直播互动与虚拟礼物平台。
 
-项目计划见 [PLAN.md](PLAN.md)。当前已完成 Phase 0 和 Phase 1，正在进入礼物与实时互动能力建设。
+项目计划见 [PLAN.md](PLAN.md)。当前已完成 Phase 0、Phase 1 和 Phase 2，正在进入高并发活动能力建设。
 
 ## 本地启动
 
@@ -68,3 +68,26 @@ ws://localhost:8083/ws/chat?roomId={roomId}&userId={userId}
 ```json
 {"type":"HEARTBEAT"}
 ```
+
+## 礼物与钱包接口
+
+查询礼物目录和余额：
+
+```powershell
+Invoke-RestMethod http://localhost:8083/api/v1/gifts
+Invoke-RestMethod http://localhost:8083/api/v1/wallet -Headers @{ 'X-User-Id' = '2' }
+```
+
+模拟充值并送礼：
+
+```powershell
+$headers = @{ 'X-User-Id' = '2' }
+$recharge = @{ bizNo = 'recharge-001'; amount = 1000 } | ConvertTo-Json
+Invoke-RestMethod http://localhost:8083/api/v1/wallet/recharge -Method Post -Headers $headers -ContentType 'application/json' -Body $recharge
+
+$gift = @{ giftCode = 'rose'; quantity = 1; clientOrderNo = 'gift-order-001' } | ConvertTo-Json
+Invoke-RestMethod http://localhost:8083/api/v1/live/rooms/1/gifts -Method Post -Headers $headers -ContentType 'application/json' -Body $gift
+Invoke-RestMethod http://localhost:8083/api/v1/gift-orders/gift-order-001
+```
+
+订单先返回 `PENDING`，RocketMQ 消费成功后变为 `SUCCESS`；余额不足会变为 `FAILED`。重复使用同一个充值业务号或 `clientOrderNo` 会返回已有结果，不会重复扣款。贡献榜和主播收益榜分别通过 `/api/v1/live/rooms/{roomId}/gift-rank` 与 `/api/v1/live/rooms/{roomId}/gift-income-rank` 查询。

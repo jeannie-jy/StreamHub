@@ -129,6 +129,14 @@ public class RoomWebSocketHandler extends TextWebSocketHandler {
         }
     }
 
+    public void broadcastEvent(long roomId, Map<String, Object> payload) {
+        try {
+            broadcast(roomId, payload);
+        } catch (IOException exception) {
+            throw new IllegalStateException("广播房间事件失败", exception);
+        }
+    }
+
     private void broadcast(long roomId, Map<String, Object> payload) throws IOException {
         String body = objectMapper.writeValueAsString(payload);
         Set<WebSocketSession> sessions = sessionsByRoom.getOrDefault(roomId, Set.of());
