@@ -1,0 +1,134 @@
+name: streamhub
+
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-streamhub}
+      MYSQL_USER: ${MYSQL_USER:-streamhub}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-streamhub}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-streamhub-root}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [streamhub]
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [streamhub]
+
+  rocketmq-volume-init:
+    image: apache/rocketmq:5.3.1
+    user: "0:0"
+    command: ["sh", "-c", "chown -R 3000:3000 /volumes/namesrv-logs /volumes/broker-logs /volumes/broker-store"]
+    volumes:
+      - rocketmq-namesrv-logs:/volumes/namesrv-logs
+      - rocketmq-broker-logs:/volumes/broker-logs
+      - rocketmq-broker-store:/volumes/broker-store
+    networks: [streamhub]
+
+  rocketmq-namesrv:
+    image: apache/rocketmq:5.3.1
+    command: ["nameserver"]
+    depends_on:
+      rocketmq-volume-init:
+        condition: service_completed_successfully
+    ports:
+      - "9876:9876"
+    volumes:
+      - rocketmq-namesrv-logs:/home/rocketmq/logs
+    networks: [streamhub]
+
+  rocketmq-broker:
+    image: apache/rocketmq:5.3.1
+    command: ["sh", "mqbroker", "-c", "/home/rocketmq/rocketmq-5.3.1/conf/broker.conf"]
+    depends_on:
+      rocketmq-volume-init:
+        condition: service_completed_successfully
+      rocketmq-namesrv:
+        condition: service_started
+    environment:
+      NAMESRV_ADDR: rocketmq-namesrv:9876
+      JAVA_OPT_EXT: "-server -Xms512m -Xmx512m -Duser.home=/home/rocketmq"
+    ports:
+      - "10909:10909"
+      - "10911:10911"
+    volumes:
+      - rocketmq-broker-logs:/home/rocketmq/logs
+      - rocketmq-broker-store:/home/rocketmq/store
+      - ./infra/rocketmq/broker.conf:/home/rocketmq/rocketmq-5.3.1/conf/broker.conf:ro
+    networks: [streamhub]
+
+  nacos:
+    image: nacos/nacos-server:v2.4.3
+    environment:
+      MODE: standalone
+      NACOS_AUTH_ENABLE: "false"
+    ports:
+      - "8848:8848"
+      - "9848:9848"
+    volumes:
+      - nacos-logs:/home/nacos/logs
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8848/nacos/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    networks: [streamhub]
+
+  srs:
+    image: ossrs/srs:6
+    command: ["./objs/srs", "-c", "conf/docker.conf"]
+    ports:
+      - "1935:1935"
+      - "1985:1985"
+      - "8080:8080"
+      - "8000:8000/udp"
+    networks: [streamhub]
+
+  minio:
+    image: minio/minio:RELEASE.2024-06-13T22-53-53Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-streamhub}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-streamhub-minio}
+    ports:
+      - "19000:9000"
+      - "19001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/minio/health/live || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    networks: [streamhub]
+
+volumes:
+  mysql-data:
+  redis-data:
+  rocketmq-namesrv-logs:
+  rocketmq-broker-logs:
+  rocketmq-broker-store:
+  nacos-logs:
+  minio-data:
+
+networks:
+  streamhub:
+    driver: bridge
