@@ -13,6 +13,13 @@ spring:
       config:
         server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
         enabled: ${NACOS_CONFIG_ENABLED:true}
+    openfeign:
+      client:
+        config:
+          streamhub-user:
+            connect-timeout: ${USER_SERVICE_CONNECT_TIMEOUT_MS:1000}
+            read-timeout: ${USER_SERVICE_READ_TIMEOUT_MS:2000}
+            logger-level: basic
   datasource:
     url: ${DB_URL:jdbc:mysql://localhost:3306/streamhub?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&createDatabaseIfNotExist=true}
     username: ${DB_USERNAME:streamhub}

@@ -8,6 +8,7 @@ import java.util.UUID;
 
 import com.streamhub.common.api.BusinessException;
 import com.streamhub.common.api.ErrorCode;
+import feign.FeignException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,17 +17,21 @@ public class LiveRoomService {
     private final LiveRoomRepository liveRoomRepository;
     private final OnlinePresenceService onlinePresenceService;
     private final MediaProperties mediaProperties;
+    private final UserServiceClient userServiceClient;
 
     public LiveRoomService(
             LiveRoomRepository liveRoomRepository,
             OnlinePresenceService onlinePresenceService,
-            MediaProperties mediaProperties) {
+            MediaProperties mediaProperties,
+            UserServiceClient userServiceClient) {
         this.liveRoomRepository = liveRoomRepository;
         this.onlinePresenceService = onlinePresenceService;
         this.mediaProperties = mediaProperties;
+        this.userServiceClient = userServiceClient;
     }
 
     public LiveRoomView create(long anchorId, CreateRoomRequest request) {
+        ensureUserExists(anchorId);
         long roomId = liveRoomRepository.create(anchorId, request);
         return toView(findRoom(roomId), null);
     }
@@ -71,6 +76,19 @@ public class LiveRoomService {
     private void checkAnchor(LiveRoom room, long anchorId) {
         if (room.anchorId() != anchorId) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "只有主播本人可以操作直播间");
+        }
+    }
+
+    private void ensureUserExists(long userId) {
+        try {
+            var response = userServiceClient.getProfile(userId);
+            if (response == null || !response.success() || response.data() == null) {
+                throw new BusinessException(ErrorCode.NOT_FOUND, "主播用户不存在");
+            }
+        } catch (FeignException.NotFound exception) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "主播用户不存在");
+        } catch (FeignException exception) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "用户服务暂时不可用");
         }
     }
 

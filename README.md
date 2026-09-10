@@ -63,6 +63,8 @@ Invoke-RestMethod "http://localhost:8088/api/v1/live/rooms/$roomId/start" -Metho
 
 开播响应会返回 SRS RTMP 推流地址和 HTTP-FLV 播放地址。经 Gateway 访问写接口时使用 `Authorization: Bearer {accessToken}`；Gateway 调用 Auth 服务校验 Token 后覆盖传入的 `X-User-Id`。直接访问业务服务进行本地排查时仍支持 `X-User-Id`。
 
+直播服务创建房间时会通过 OpenFeign 调用 User 服务校验主播用户，服务发现由 Nacos 提供，连接超时和读取超时可通过 `USER_SERVICE_CONNECT_TIMEOUT_MS` 与 `USER_SERVICE_READ_TIMEOUT_MS` 调整。
+
 WebSocket 弹幕地址（独立实时网关）：
 
 ```text
