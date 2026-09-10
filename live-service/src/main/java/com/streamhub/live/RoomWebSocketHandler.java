@@ -53,7 +53,9 @@ public class RoomWebSocketHandler extends TextWebSocketHandler {
 
         session.getAttributes().put("roomId", roomId);
         session.getAttributes().put("userId", userId);
-        roomSessionRegistry.add(roomId, session);
+        if (!roomSessionRegistry.add(roomId, session)) {
+            return;
+        }
         onlinePresenceService.join(roomId, userId);
         send(session, Map.of(
                 "type", "CONNECTED",

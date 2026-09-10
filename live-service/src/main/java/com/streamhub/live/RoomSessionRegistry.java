@@ -7,7 +7,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
@@ -16,9 +18,29 @@ public class RoomSessionRegistry {
     private static final Logger log = LoggerFactory.getLogger(RoomSessionRegistry.class);
 
     private final Map<Long, Set<WebSocketSession>> sessionsByRoom = new ConcurrentHashMap<>();
+    private final int maxSessionsPerRoom;
 
-    public void add(long roomId, WebSocketSession session) {
-        sessionsByRoom.computeIfAbsent(roomId, ignored -> ConcurrentHashMap.newKeySet()).add(session);
+    public RoomSessionRegistry(
+            @Value("${streamhub.realtime.max-sessions-per-room:10000}") int maxSessionsPerRoom) {
+        this.maxSessionsPerRoom = Math.max(1, maxSessionsPerRoom);
+    }
+
+    public boolean add(long roomId, WebSocketSession session) {
+        Set<WebSocketSession> sessions = sessionsByRoom.computeIfAbsent(
+                roomId,
+                ignored -> ConcurrentHashMap.newKeySet());
+        synchronized (sessions) {
+            if (sessions.size() >= maxSessionsPerRoom) {
+                try {
+                    session.close(CloseStatus.SERVICE_OVERLOAD);
+                } catch (IOException exception) {
+                    log.debug("关闭超限 WebSocket 连接失败 roomId={} sessionId={}", roomId, session.getId());
+                }
+                return false;
+            }
+            sessions.add(session);
+            return true;
+        }
     }
 
     public void remove(long roomId, WebSocketSession session) {

@@ -73,7 +73,7 @@ ws://localhost:8090/ws/chat?roomId={roomId}&userId={userId}
 
 连接 Realtime Gateway 时可以附带 `Authorization: Bearer {accessToken}`，网关会用 Token 覆盖查询参数中的 `userId`；未带 Token 时保留本地 MVP 的查询参数鉴权方式。直接访问直播服务进行排查时，也可以使用 `ws://localhost:8083/ws/chat`。API Gateway `8088` 专注 HTTP，Realtime Gateway `8090` 专注 WebSocket 长连接。Nacos 地址、配置中心开关和配置分组见 [.env.example](.env.example) 中的 `NACOS_SERVER_ADDR`、`NACOS_DISCOVERY_ENABLED`、`NACOS_CONFIG_ENABLED` 与 `NACOS_CONFIG_GROUP`。
 
-直播服务实例使用 Redis Pub/Sub 的 `STREAMHUB_REALTIME_CHANNEL` 广播聊天、礼物和活动事件；每个实例只向自己持有的 WebSocket 连接发送消息。通过 `STREAMHUB_NODE_ID` 设置实例标识，便于日志和多节点排查。
+直播服务实例使用 Redis Pub/Sub 的 `STREAMHUB_REALTIME_CHANNEL` 广播聊天、礼物和活动事件；每个实例只向自己持有的 WebSocket 连接发送消息。通过 `STREAMHUB_NODE_ID` 设置实例标识，便于日志和多节点排查。单实例单房间连接数和普通弹幕广播速率分别由 `STREAMHUB_MAX_SESSIONS_PER_ROOM` 与 `STREAMHUB_MAX_CHAT_EVENTS_PER_SECOND` 限制，触发速率保护的弹幕仍保存在 MySQL，可通过历史接口补偿；广播计数可从 `/actuator/metrics` 观察。
 
 发送弹幕：
 

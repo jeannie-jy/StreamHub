@@ -40,7 +40,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics
   endpoint:
     health:
       probes:
@@ -53,6 +53,8 @@ streamhub:
   realtime:
     channel: ${STREAMHUB_REALTIME_CHANNEL:live:room:events}
     node-id: ${STREAMHUB_NODE_ID:local}
+    max-sessions-per-room: ${STREAMHUB_MAX_SESSIONS_PER_ROOM:10000}
+    max-chat-events-per-second: ${STREAMHUB_MAX_CHAT_EVENTS_PER_SECOND:1000}
   rocketmq:
     namesrv-addr: ${ROCKETMQ_NAMESRV_ADDR:localhost:9876}
     gift-topic: ${ROCKETMQ_GIFT_TOPIC:STREAMHUB_GIFT_ORDER}
