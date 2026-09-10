@@ -1,5 +1,7 @@
 package com.streamhub.live;
 
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -34,6 +36,21 @@ public class ActivityOrderRepository {
 
     public Optional<ActivityOrder> findByActivityAndUser(long activityId, long userId) {
         return query("WHERE activity_id = ? AND user_id = ?", activityId, userId).stream().findFirst();
+    }
+
+    public List<ActivityOrder> findPendingOlderThan(Instant createdBefore, int limit) {
+        return query(
+                "WHERE status = 'PENDING' AND created_at < ? ORDER BY id LIMIT ?",
+                Timestamp.from(createdBefore),
+                limit);
+    }
+
+    public List<Long> findReservedUserIds(long activityId) {
+        return jdbcTemplate.queryForList(
+                "SELECT user_id FROM activity_order "
+                        + "WHERE activity_id = ? AND status IN ('PENDING', 'SUCCESS') ORDER BY id",
+                Long.class,
+                activityId);
     }
 
     public boolean markSuccess(String orderNo) {

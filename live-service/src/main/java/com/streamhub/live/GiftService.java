@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.time.Instant;
 
 import com.streamhub.common.api.BusinessException;
 import com.streamhub.common.api.ErrorCode;
@@ -16,9 +17,13 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class GiftService {
+    private static final Logger log = LoggerFactory.getLogger(GiftService.class);
+
     private final GiftCatalogRepository giftCatalogRepository;
     private final GiftOrderRepository giftOrderRepository;
     private final WalletRepository walletRepository;
@@ -134,6 +139,42 @@ public class GiftService {
 
     public List<GiftRankEntry> incomeRank(long roomId, int limit) {
         return rank(roomId, limit, "income");
+    }
+
+    public int retryPending(Instant createdBefore, int limit) {
+        int retried = 0;
+        for (GiftOrder order : giftOrderRepository.findPendingOlderThan(createdBefore, limit)) {
+            try {
+                sendOrderMessage(order.orderNo());
+                retried++;
+            } catch (RuntimeException exception) {
+                log.warn("补偿礼物订单消息失败 orderNo={}", order.orderNo(), exception);
+            }
+        }
+        return retried;
+    }
+
+    public int rebuildRanks() {
+        int rebuilt = 0;
+        for (Long roomId : giftOrderRepository.findRankRoomIds()) {
+            stringRedisTemplate.delete(rankKey(roomId, "contributors"));
+            stringRedisTemplate.delete(rankKey(roomId, "income"));
+            for (GiftRankEntry entry : giftOrderRepository.contributorRank(roomId)) {
+                stringRedisTemplate.opsForZSet().add(
+                        rankKey(roomId, "contributors"),
+                        String.valueOf(entry.userId()),
+                        entry.amount());
+                rebuilt++;
+            }
+            for (GiftRankEntry entry : giftOrderRepository.incomeRank(roomId)) {
+                stringRedisTemplate.opsForZSet().add(
+                        rankKey(roomId, "income"),
+                        String.valueOf(entry.userId()),
+                        entry.amount());
+                rebuilt++;
+            }
+        }
+        return rebuilt;
     }
 
     private List<GiftRankEntry> rank(long roomId, int limit, String rankType) {

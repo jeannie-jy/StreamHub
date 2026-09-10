@@ -55,6 +55,12 @@ streamhub:
     node-id: ${STREAMHUB_NODE_ID:local}
     max-sessions-per-room: ${STREAMHUB_MAX_SESSIONS_PER_ROOM:10000}
     max-chat-events-per-second: ${STREAMHUB_MAX_CHAT_EVENTS_PER_SECOND:1000}
+  reconciliation:
+    enabled: ${STREAMHUB_RECONCILIATION_ENABLED:true}
+    fixed-delay-ms: ${STREAMHUB_RECONCILIATION_FIXED_DELAY_MS:60000}
+    pending-age-ms: ${STREAMHUB_RECONCILIATION_PENDING_AGE_MS:30000}
+    batch-size: ${STREAMHUB_RECONCILIATION_BATCH_SIZE:100}
+    lock-key: ${STREAMHUB_RECONCILIATION_LOCK_KEY:streamhub:lock:reconciliation}
   rocketmq:
     namesrv-addr: ${ROCKETMQ_NAMESRV_ADDR:localhost:9876}
     gift-topic: ${ROCKETMQ_GIFT_TOPIC:STREAMHUB_GIFT_ORDER}

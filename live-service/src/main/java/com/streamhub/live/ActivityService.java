@@ -12,10 +12,13 @@ import org.apache.rocketmq.common.message.Message;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.script.RedisScript;
 
 @Service
 public class ActivityService {
+    private static final Logger log = LoggerFactory.getLogger(ActivityService.class);
     private static final long STOCK_NOT_ENOUGH = -1L;
     private static final long USER_ALREADY_JOINED = -2L;
     private static final RedisScript<Long> RESERVE_SCRIPT = RedisScript.of(
@@ -151,6 +154,47 @@ public class ActivityService {
         return activityOrderRepository.findByOrderNo(orderNo)
                 .map(ActivityOrderView::from)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "活动订单不存在"));
+    }
+
+    public int retryPending(Instant createdBefore, int limit) {
+        int retried = 0;
+        for (ActivityOrder order : activityOrderRepository.findPendingOlderThan(createdBefore, limit)) {
+            try {
+                sendMessage("CREATE", order.orderNo(), 0);
+                sendMessage("CLOSE", order.orderNo(), rocketMqProperties.getTimeoutDelayLevel());
+                retried++;
+            } catch (RuntimeException exception) {
+                log.warn("补偿活动订单消息失败 orderNo={}", order.orderNo(), exception);
+            } catch (Exception exception) {
+                log.warn("补偿活动订单消息失败 orderNo={}", order.orderNo(), exception);
+            }
+        }
+        return retried;
+    }
+
+    public int reconcileActiveInventory() {
+        int repaired = 0;
+        for (Activity activity : activityRepository.findActive()) {
+            List<Long> reservedUserIds = activityOrderRepository.findReservedUserIds(activity.id());
+            int remainingStock = Math.max(0, activity.stock() - reservedUserIds.size());
+            if (reservedUserIds.size() > activity.stock()) {
+                log.warn("活动库存对账发现预占数量超过初始库存 activityId={} stock={} reserved={}",
+                        activity.id(), activity.stock(), reservedUserIds.size());
+            }
+
+            String stockKey = stockKey(activity.id());
+            String userKey = userKey(activity.id());
+            stringRedisTemplate.opsForValue().set(stockKey, String.valueOf(remainingStock));
+            stringRedisTemplate.delete(userKey);
+            if (!reservedUserIds.isEmpty()) {
+                String[] members = reservedUserIds.stream()
+                        .map(String::valueOf)
+                        .toArray(String[]::new);
+                stringRedisTemplate.opsForSet().add(userKey, members);
+            }
+            repaired++;
+        }
+        return repaired;
     }
 
     public boolean processCreate(String orderNo) {

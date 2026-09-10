@@ -53,6 +53,11 @@ public class ActivityRepository {
                 + "created_at, updated_at FROM activity WHERE id = ?", activityId).stream().findFirst();
     }
 
+    public List<Activity> findActive() {
+        return query("SELECT id, room_id, name, stock, unit_price, status, starts_at, ends_at, "
+                + "created_at, updated_at FROM activity WHERE status = 'ACTIVE' ORDER BY id");
+    }
+
     public boolean activate(long activityId) {
         return jdbcTemplate.update(
                 "UPDATE activity SET status = 'ACTIVE', updated_at = CURRENT_TIMESTAMP(3) "

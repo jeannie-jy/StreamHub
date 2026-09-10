@@ -3,6 +3,7 @@ package com.streamhub.live;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -62,6 +63,34 @@ public class GiftOrderRepository {
         return query(SELECT_ORDER + "WHERE o.order_no = ? FOR UPDATE", orderNo).stream().findFirst();
     }
 
+    public List<GiftOrder> findPendingOlderThan(Instant createdBefore, int limit) {
+        return query(
+                SELECT_ORDER + "WHERE o.status = 'PENDING' AND o.created_at < ? "
+                        + "ORDER BY o.id LIMIT ?",
+                Timestamp.from(createdBefore),
+                limit);
+    }
+
+    public List<Long> findRankRoomIds() {
+        return jdbcTemplate.queryForList("SELECT DISTINCT room_id FROM gift_order", Long.class);
+    }
+
+    public List<GiftRankEntry> contributorRank(long roomId) {
+        return rankQuery(
+                "SELECT sender_id AS user_id, COALESCE(SUM(total_amount), 0) AS amount "
+                        + "FROM gift_order WHERE room_id = ? AND status = 'SUCCESS' "
+                        + "GROUP BY sender_id ORDER BY amount DESC, sender_id ASC",
+                roomId);
+    }
+
+    public List<GiftRankEntry> incomeRank(long roomId) {
+        return rankQuery(
+                "SELECT anchor_id AS user_id, COALESCE(SUM(total_amount), 0) AS amount "
+                        + "FROM gift_order WHERE room_id = ? AND status = 'SUCCESS' "
+                        + "GROUP BY anchor_id ORDER BY amount DESC, anchor_id ASC",
+                roomId);
+    }
+
     public void markFailed(String orderNo, String reason) {
         jdbcTemplate.update(
                 "UPDATE gift_order SET status = 'FAILED', failure_reason = ?, processed_at = CURRENT_TIMESTAMP(3) "
@@ -75,6 +104,13 @@ public class GiftOrderRepository {
                 "UPDATE gift_order SET status = 'SUCCESS', processed_at = CURRENT_TIMESTAMP(3) "
                         + "WHERE order_no = ? AND status = 'PENDING'",
                 orderNo);
+    }
+
+    private List<GiftRankEntry> rankQuery(String sql, long roomId) {
+        return jdbcTemplate.query(sql, (resultSet, rowNum) -> new GiftRankEntry(
+                rowNum + 1,
+                resultSet.getLong("user_id"),
+                resultSet.getLong("amount")), roomId);
     }
 
     private List<GiftOrder> query(String sql, Object... args) {
