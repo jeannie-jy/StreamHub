@@ -2,7 +2,7 @@
 
 基于 Spring Boot 微服务架构的高并发直播互动与虚拟礼物平台。
 
-项目计划见 [PLAN.md](PLAN.md)。当前已完成 Phase 0、Phase 1 和 Phase 2，正在进入高并发活动能力建设。
+项目计划见 [PLAN.md](PLAN.md)。当前已完成 Phase 0、Phase 1、Phase 2 和 Phase 3，正在进入微服务化与多节点实时网关建设。
 
 ## 本地启动
 
@@ -91,3 +91,25 @@ Invoke-RestMethod http://localhost:8083/api/v1/gift-orders/gift-order-001
 ```
 
 订单先返回 `PENDING`，RocketMQ 消费成功后变为 `SUCCESS`；余额不足会变为 `FAILED`。重复使用同一个充值业务号或 `clientOrderNo` 会返回已有结果，不会重复扣款。贡献榜和主播收益榜分别通过 `/api/v1/live/rooms/{roomId}/gift-rank` 与 `/api/v1/live/rooms/{roomId}/gift-income-rank` 查询。
+
+## 秒杀活动接口
+
+活动使用 UTC 的 ISO-8601 时间，创建后由主播启动，启动时会把库存预热到 Redis：
+
+```powershell
+$headers = @{ 'X-User-Id' = '1' }
+$start = [DateTime]::UtcNow.AddMinutes(-1).ToString('o')
+$end = [DateTime]::UtcNow.AddHours(1).ToString('o')
+$activity = @{ name = 'Flash Sale'; stock = 100; unitPrice = 0; startsAt = $start; endsAt = $end } | ConvertTo-Json
+$created = Invoke-RestMethod http://localhost:8083/api/v1/live/rooms/1/activities -Method Post -Headers $headers -ContentType 'application/json' -Body $activity
+$activityId = $created.data.id
+Invoke-RestMethod "http://localhost:8083/api/v1/activities/$activityId/start" -Method Post -Headers $headers
+```
+
+用户抢购时，Redis Lua 脚本原子完成库存扣减和一人一次校验，RocketMQ 异步更新订单；重复请求由 Redis 和 MySQL 双重幂等保护：
+
+```powershell
+$order = @{ clientOrderNo = 'activity-order-001' } | ConvertTo-Json
+Invoke-RestMethod "http://localhost:8083/api/v1/activities/$activityId/seckill" -Method Post -Headers @{ 'X-User-Id' = '2' } -ContentType 'application/json' -Body $order
+Invoke-RestMethod http://localhost:8083/api/v1/activity-orders/activity-order-001
+```

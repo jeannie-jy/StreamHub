@@ -11,6 +11,7 @@ import com.streamhub.common.api.BusinessException;
 import com.streamhub.common.api.ErrorCode;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.common.message.Message;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Service;
@@ -32,7 +33,7 @@ public class GiftService {
             GiftOrderRepository giftOrderRepository,
             WalletRepository walletRepository,
             LiveRoomRepository liveRoomRepository,
-            DefaultMQProducer giftOrderProducer,
+            @Qualifier("giftOrderProducer") DefaultMQProducer giftOrderProducer,
             RocketMqProperties rocketMqProperties,
             StringRedisTemplate stringRedisTemplate,
             RoomWebSocketHandler roomWebSocketHandler) {
@@ -112,7 +113,7 @@ public class GiftService {
     private void sendOrderMessage(String orderNo) {
         try {
             Message message = new Message(
-                    rocketMqProperties.getTopic(),
+                    rocketMqProperties.getGiftTopic(),
                     orderNo.getBytes(StandardCharsets.UTF_8));
             message.setKeys(orderNo);
             giftOrderProducer.send(message);

@@ -31,3 +31,12 @@ streamhub:
   media:
     rtmp-publish-base: ${MEDIA_RTMP_PUBLISH_BASE:rtmp://localhost:1935/live/}
     http-flv-play-base: ${MEDIA_HTTP_FLV_PLAY_BASE:http://localhost:8080/live/}
+  rocketmq:
+    namesrv-addr: ${ROCKETMQ_NAMESRV_ADDR:localhost:9876}
+    gift-topic: ${ROCKETMQ_GIFT_TOPIC:STREAMHUB_GIFT_ORDER}
+    gift-producer-group: ${ROCKETMQ_GIFT_PRODUCER_GROUP:streamhub-gift-producer}
+    gift-consumer-group: ${ROCKETMQ_GIFT_CONSUMER_GROUP:streamhub-gift-consumer}
+    activity-topic: ${ROCKETMQ_ACTIVITY_TOPIC:STREAMHUB_ACTIVITY_ORDER}
+    activity-producer-group: ${ROCKETMQ_ACTIVITY_PRODUCER_GROUP:streamhub-activity-producer}
+    activity-consumer-group: ${ROCKETMQ_ACTIVITY_CONSUMER_GROUP:streamhub-activity-consumer-v2}
+    timeout-delay-level: ${ROCKETMQ_ACTIVITY_TIMEOUT_DELAY_LEVEL:3}
