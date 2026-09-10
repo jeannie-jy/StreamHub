@@ -1,0 +1,14 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: streamhub
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - host.docker.internal:8081
+          - host.docker.internal:8082
+          - host.docker.internal:8083
+          - host.docker.internal:8088
+          - host.docker.internal:8090
