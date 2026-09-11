@@ -10,6 +10,7 @@ import java.time.Instant;
 
 import com.streamhub.common.api.BusinessException;
 import com.streamhub.common.api.ErrorCode;
+import com.streamhub.common.api.PageResult;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.common.message.Message;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -131,6 +132,11 @@ public class GiftService {
         return giftOrderRepository.findByOrderNo(orderNo)
                 .map(GiftOrderView::from)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "礼物订单不存在"));
+    }
+
+    public PageResult<GiftOrderView> ordersForUser(long userId, int page, int pageSize) {
+        PageResult<GiftOrder> result = giftOrderRepository.findBySenderId(userId, page, pageSize);
+        return new PageResult<>(result.items().stream().map(GiftOrderView::from).toList(), result.page(), result.pageSize(), result.total(), result.hasNext());
     }
 
     public List<GiftRankEntry> contributorRank(long roomId, int limit) {

@@ -9,4 +9,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 public interface UserServiceClient {
     @GetMapping("/{userId}")
     ApiResponse<UserProfileSnapshot> getProfile(@PathVariable("userId") long userId);
+
+    @GetMapping("/internal/banned-count")
+    ApiResponse<Long> countBannedUsers();
 }

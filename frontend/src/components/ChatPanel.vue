@@ -46,12 +46,24 @@ async function loadHistory(afterId = 0) {
 async function connect() {
   if (stopped || !props.userId || connected.value || connecting.value) return
   connecting.value = true
-  const ticket = await createTicket()
+  let ticket: string | null = null
+  try {
+    ticket = await createTicket()
+  } catch {
+    connecting.value = false
+    scheduleReconnect()
+    return
+  }
   const base = import.meta.env.VITE_WS_BASE_URL || '/ws'
   const wsBase = base.startsWith('http') ? base.replace(/^http/, 'ws') : `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}${base}`
   const params = new URLSearchParams({ roomId: String(props.roomId) })
   if (ticket) params.set('ticket', ticket)
-  else params.set('userId', String(props.userId))
+  else if (import.meta.env.DEV && import.meta.env.VITE_WS_LEGACY_USER_ID === 'true') params.set('userId', String(props.userId))
+  else {
+    connecting.value = false
+    scheduleReconnect()
+    return
+  }
   socket = new WebSocket(`${wsBase}/chat?${params}`)
   socket.onopen = () => {
     connected.value = true
@@ -67,9 +79,7 @@ async function connect() {
     window.clearInterval(heartbeatTimer)
     if (stopped) return
     await loadHistory(messages.value.at(-1)?.id || 0)
-    reconnectCount.value += 1
-    const delay = Math.min(15_000, 1_000 * 2 ** Math.min(reconnectCount.value - 1, 4))
-    reconnectTimer = window.setTimeout(connect, delay)
+    scheduleReconnect()
   }
 }
 
@@ -77,14 +87,24 @@ async function createTicket() {
   try {
     return (await authApi.wsTicket()).ticket
   } catch {
-    return import.meta.env.DEV ? null : null
+    if (import.meta.env.DEV && import.meta.env.VITE_WS_LEGACY_USER_ID === 'true') return null
+    throw new Error('实时连接鉴权失败')
   }
+}
+
+function scheduleReconnect() {
+  if (stopped) return
+  reconnectCount.value += 1
+  const delay = Math.min(15_000, 1_000 * 2 ** Math.min(reconnectCount.value - 1, 4))
+  reconnectTimer = window.setTimeout(connect, delay)
 }
 
 function handleEvent(event: Record<string, any>) {
   if (event.type === 'CHAT') {
     appendMessages([event as ChatMessage])
     void scrollToBottom()
+  } else if (event.type === 'ERROR') {
+    messageApi?.warning(event.message || '弹幕发送失败')
   }
 }
 

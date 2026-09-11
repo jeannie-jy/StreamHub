@@ -22,11 +22,11 @@ spring:
         - id: user-service
           uri: lb://streamhub-user
           predicates:
-            - Path=/api/v1/users/**
+            - Path=/api/v1/users/**,/api/v1/ops/users/**
         - id: live-service-api
           uri: lb://streamhub-live
           predicates:
-            - Path=/api/v1/live/**,/api/v1/gifts,/api/v1/wallet/**,/api/v1/activities/**,/api/v1/gift-orders/**,/api/v1/activity-orders/**
+            - Path=/api/v1/live/**,/api/v1/gifts,/api/v1/wallet/**,/api/v1/activities/**,/api/v1/gift-orders/**,/api/v1/activity-orders/**,/api/v1/ops/**
 
 server:
   port: ${SERVER_PORT:8088}

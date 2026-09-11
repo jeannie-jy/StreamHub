@@ -21,9 +21,22 @@ spring:
   flyway:
     enabled: ${FLYWAY_ENABLED:true}
     locations: classpath:db/migration
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
 
 server:
   port: ${SERVER_PORT:8081}
+
+streamhub:
+  auth:
+    access-ttl: ${AUTH_ACCESS_TTL:15m}
+    refresh-ttl: ${AUTH_REFRESH_TTL:30d}
+    refresh-cookie-name: ${AUTH_REFRESH_COOKIE_NAME:streamhub_refresh}
+    cookie-secure: ${AUTH_COOKIE_SECURE:false}
+    cookie-same-site: ${AUTH_COOKIE_SAME_SITE:Lax}
+    ws-ticket-ttl: ${AUTH_WS_TICKET_TTL:30s}
 
 management:
   endpoints:

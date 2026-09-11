@@ -24,6 +24,9 @@ public class RoomWebSocketHandler extends TextWebSocketHandler {
     private final OnlinePresenceService onlinePresenceService;
     private final RoomSessionRegistry roomSessionRegistry;
     private final RoomBroadcastService roomBroadcastService;
+    private final UserServiceClient userServiceClient;
+    private final SensitiveWordService sensitiveWordService;
+    private final RoomMuteRepository roomMuteRepository;
     private final Map<Long, Long> lastMessageAtByUser = new ConcurrentHashMap<>();
 
     public RoomWebSocketHandler(
@@ -32,13 +35,19 @@ public class RoomWebSocketHandler extends TextWebSocketHandler {
             ChatMessageRepository chatMessageRepository,
             OnlinePresenceService onlinePresenceService,
             RoomSessionRegistry roomSessionRegistry,
-            RoomBroadcastService roomBroadcastService) {
+            RoomBroadcastService roomBroadcastService,
+            UserServiceClient userServiceClient,
+            SensitiveWordService sensitiveWordService,
+            RoomMuteRepository roomMuteRepository) {
         this.objectMapper = objectMapper;
         this.liveRoomRepository = liveRoomRepository;
         this.chatMessageRepository = chatMessageRepository;
         this.onlinePresenceService = onlinePresenceService;
         this.roomSessionRegistry = roomSessionRegistry;
         this.roomBroadcastService = roomBroadcastService;
+        this.userServiceClient = userServiceClient;
+        this.sensitiveWordService = sensitiveWordService;
+        this.roomMuteRepository = roomMuteRepository;
     }
 
     @Override
@@ -46,7 +55,7 @@ public class RoomWebSocketHandler extends TextWebSocketHandler {
         Map<String, String> query = queryParameters(session);
         Long roomId = parsePositiveLong(query.get("roomId"));
         Long userId = parsePositiveLong(query.get("userId"));
-        if (roomId == null || userId == null || liveRoomRepository.findById(roomId).isEmpty()) {
+        if (roomId == null || userId == null || liveRoomRepository.findById(roomId).isEmpty() || !isActiveUser(userId)) {
             session.close(CloseStatus.POLICY_VIOLATION);
             return;
         }
@@ -84,12 +93,31 @@ public class RoomWebSocketHandler extends TextWebSocketHandler {
             sendError(session, "只支持 CHAT 和 HEARTBEAT 消息");
             return;
         }
+        if (roomMuteRepository.isMuted(roomId, userId, Instant.now())) {
+            send(session, Map.of("type", "ERROR", "code", "ROOM_MUTED", "message", "你已被本房间禁言"));
+            return;
+        }
         if (!StringUtils.hasText(command.clientMessageId()) || command.clientMessageId().length() > 64) {
             sendError(session, "clientMessageId 必填且长度不能超过 64");
             return;
         }
         if (!StringUtils.hasText(command.content()) || command.content().length() > 512) {
             sendError(session, "弹幕内容不能为空且长度不能超过 512");
+            return;
+        }
+
+        var matchedWord = sensitiveWordService.matchedWord(command.content().trim());
+        if (matchedWord.isPresent()) {
+            sensitiveWordService.logBlocked(roomId, userId, command.content().trim(), matchedWord.get());
+            send(session, Map.of(
+                    "type", "ERROR",
+                    "code", "CONTENT_BLOCKED",
+                    "message", "弹幕包含敏感内容，请修改后重试"));
+            return;
+        }
+        if (!isActiveUser(userId)) {
+            sendError(session, "账号已被封禁");
+            session.close(CloseStatus.POLICY_VIOLATION);
             return;
         }
 
@@ -165,6 +193,16 @@ public class RoomWebSocketHandler extends TextWebSocketHandler {
     private Long attributeAsLong(WebSocketSession session, String key) {
         Object value = session.getAttributes().get(key);
         return value instanceof Long ? (Long) value : null;
+    }
+
+    private boolean isActiveUser(long userId) {
+        try {
+            var response = userServiceClient.getProfile(userId);
+            return response != null && response.success() && response.data() != null
+                    && "ACTIVE".equals(response.data().status());
+        } catch (RuntimeException exception) {
+            return false;
+        }
     }
 
     public record ChatCommand(String type, String clientMessageId, String content) {

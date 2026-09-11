@@ -5,6 +5,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
+import com.streamhub.common.api.PageResult;
+
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -51,6 +53,36 @@ public class ActivityOrderRepository {
                         + "WHERE activity_id = ? AND status IN ('PENDING', 'SUCCESS') ORDER BY id",
                 Long.class,
                 activityId);
+    }
+
+    public PageResult<ActivityOrder> findByUserId(long userId, int page, int pageSize) {
+        int safePage = Math.max(1, page);
+        int safePageSize = Math.max(1, Math.min(pageSize, 100));
+        Long total = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM activity_order WHERE user_id = ?", Long.class, userId);
+        List<ActivityOrder> items = query(
+                "WHERE user_id = ? ORDER BY id DESC LIMIT ? OFFSET ?",
+                userId,
+                safePageSize,
+                (safePage - 1) * safePageSize);
+        return PageResult.of(items, safePage, safePageSize, total == null ? 0 : total);
+    }
+
+    public long countAll() {
+        Long count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM activity_order", Long.class);
+        return count == null ? 0 : count;
+    }
+
+    public long countPending() {
+        Long count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM activity_order WHERE status = 'PENDING'", Long.class);
+        return count == null ? 0 : count;
+    }
+
+    public long countByRoom(long roomId) {
+        Long count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM activity_order o JOIN activity a ON a.id = o.activity_id WHERE a.room_id = ?",
+                Long.class,
+                roomId);
+        return count == null ? 0 : count;
     }
 
     public boolean markSuccess(String orderNo) {

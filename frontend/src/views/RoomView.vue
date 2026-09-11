@@ -2,7 +2,7 @@
 import { computed, inject, onMounted, ref } from 'vue'
 import { NButton, NDivider, NEmpty, NSpin, NTag } from 'naive-ui'
 import { useRoute, useRouter } from 'vue-router'
-import { activityApi, liveApi } from '@/api'
+import { liveApi } from '@/api'
 import { ApiError } from '@/api/client'
 import ActivityPanel from '@/components/ActivityPanel.vue'
 import ChatPanel from '@/components/ChatPanel.vue'
@@ -49,9 +49,6 @@ async function toggleFollow() {
   try { following.value = await users.toggleFollow(room.value.anchorId) } catch (error) { messageApi?.error(error instanceof Error ? error.message : '操作失败') } finally { followLoading.value = false }
 }
 
-async function refreshActivity(activityId: number) {
-  try { const updated = await activityApi.get(activityId); const index = activities.value.findIndex((item) => item.id === activityId); if (index >= 0) activities.value[index] = updated } catch { /* live updates are best effort */ }
-}
 </script>
 
 <template>
@@ -60,7 +57,7 @@ async function refreshActivity(activityId: number) {
     <div v-else-if="!room" class="empty-state surface"><NEmpty description="直播间不存在或已下线" /><NButton secondary @click="router.push('/')">返回发现</NButton></div>
     <template v-else>
       <div class="room-topline"><div><NTag v-if="room.status === 'LIVE'" type="error" round size="small">LIVE NOW</NTag><span class="room-id">ROOM #{{ room.id }}</span></div><NButton quaternary @click="router.push('/')">← 返回发现</NButton></div>
-      <div class="two-column room-layout"><section><VideoPlayer :webrtc-url="room.webrtcPlaybackUrl" :flv-url="room.playbackUrl" :title="room.title" /><div class="room-info"><div class="room-title-row"><div><h1>{{ room.title }}</h1><div class="room-stats"><span>◉ {{ room.onlineCount }} 人在线</span><span>·</span><span>{{ room.category || '综合' }}</span></div></div><NButton v-if="room.anchorId !== auth.userId" :type="following ? 'default' : 'primary'" secondary @click="toggleFollow">{{ following ? '已关注' : '关注主播' }}</NButton></div><div class="anchor-row"><span class="large-avatar">{{ (anchor?.nickname || `主播 ${room.anchorId}`).slice(0, 1) }}</span><div><strong>{{ anchor?.nickname || `主播 ${room.anchorId}` }}</strong><div class="muted">{{ anchor?.followerCount || 0 }} 位关注者</div></div></div></div><NDivider /><div v-if="activities.length" class="room-activities"><div class="section-heading compact"><div><h2>直播活动</h2><p>参与互动赢取限时福利</p></div></div><div class="activity-stack"><ActivityPanel v-for="activity in activities" :key="activity.id" :activity="activity" :enabled="auth.isAuthenticated" @vue:updated="refreshActivity(activity.id)" /></div></div></section><aside class="room-sidebar"><ChatPanel :room-id="room.id" :user-id="auth.userId || undefined" /><GiftPanel :room-id="room.id" :enabled="auth.isAuthenticated" /><RankList :room-id="room.id" /></aside></div>
+      <div class="two-column room-layout"><section><VideoPlayer :webrtc-url="room.webrtcPlaybackUrl" :flv-url="room.playbackUrl" :title="room.title" /><div class="room-info"><div class="room-title-row"><div><h1>{{ room.title }}</h1><div class="room-stats"><span>◉ {{ room.onlineCount }} 人在线</span><span>·</span><span>{{ room.category || '综合' }}</span></div></div><NButton v-if="room.anchorId !== auth.userId" :type="following ? 'default' : 'primary'" secondary @click="toggleFollow">{{ following ? '已关注' : '关注主播' }}</NButton></div><div class="anchor-row"><span class="large-avatar">{{ (anchor?.nickname || `主播 ${room.anchorId}`).slice(0, 1) }}</span><div><strong>{{ anchor?.nickname || `主播 ${room.anchorId}` }}</strong><div class="muted">{{ anchor?.followerCount || 0 }} 位关注者</div></div></div></div><NDivider /><div v-if="activities.length" class="room-activities"><div class="section-heading compact"><div><h2>直播活动</h2><p>参与互动赢取限时福利</p></div></div><div class="activity-stack"><ActivityPanel v-for="activity in activities" :key="activity.id" :activity="activity" :enabled="auth.isAuthenticated" /></div></div></section><aside class="room-sidebar"><ChatPanel :room-id="room.id" :user-id="auth.userId || undefined" /><GiftPanel :room-id="room.id" :enabled="auth.isAuthenticated" /><RankList :room-id="room.id" /></aside></div>
     </template>
   </main>
 </template>

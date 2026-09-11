@@ -7,7 +7,7 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? 'github' : 'list',
   use: {
-    baseURL: process.env.WEB_BASE_URL || 'http://localhost:8089',
+    baseURL: process.env.E2E_START_WEB === 'true' ? 'http://localhost:5173' : (process.env.WEB_BASE_URL || 'http://localhost:8089'),
     trace: 'on-first-retry',
   },
   webServer: process.env.E2E_START_WEB === 'true'

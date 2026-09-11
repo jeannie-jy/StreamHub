@@ -7,6 +7,7 @@ import java.util.Map;
 
 import com.streamhub.common.api.BusinessException;
 import com.streamhub.common.api.ErrorCode;
+import com.streamhub.common.api.PageResult;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.common.message.Message;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -100,6 +101,29 @@ public class ActivityService {
         return view(findActivity(activityId));
     }
 
+    public List<ActivityView> listByRoom(long roomId) {
+        liveRoomRepository.findById(roomId).orElseThrow(
+                () -> new BusinessException(ErrorCode.NOT_FOUND, "直播间不存在"));
+        return activityRepository.findByRoomId(roomId).stream().map(this::view).toList();
+    }
+
+    public PageResult<ActivityView> page(String status, int page, int pageSize) {
+        List<ActivityView> items = activityRepository.page(status, page, pageSize).stream().map(this::view).toList();
+        return PageResult.of(items, Math.max(1, page), Math.max(1, Math.min(pageSize, 100)), activityRepository.count(status));
+    }
+
+    public ActivityView stop(long activityId) {
+        Activity activity = findActivity(activityId);
+        activityRepository.stop(activityId);
+        stringRedisTemplate.delete(stockKey(activityId));
+        stringRedisTemplate.delete(userKey(activityId));
+        return view(activityRepository.findById(activity.id()).orElseThrow());
+    }
+
+    public void appendAudit(long operatorId, String action, String targetType, String targetId, String reason) {
+        activityRepository.appendAudit(operatorId, action, targetType, targetId, reason);
+    }
+
     public ActivityOrderView seckill(long activityId, long userId, String clientOrderNo) {
         Activity activity = findActivity(activityId);
         if (!"ACTIVE".equals(activity.status())) {
@@ -154,6 +178,11 @@ public class ActivityService {
         return activityOrderRepository.findByOrderNo(orderNo)
                 .map(ActivityOrderView::from)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "活动订单不存在"));
+    }
+
+    public PageResult<ActivityOrderView> ordersForUser(long userId, int page, int pageSize) {
+        PageResult<ActivityOrder> result = activityOrderRepository.findByUserId(userId, page, pageSize);
+        return new PageResult<>(result.items().stream().map(ActivityOrderView::from).toList(), result.page(), result.pageSize(), result.total(), result.hasNext());
     }
 
     public int retryPending(Instant createdBefore, int limit) {

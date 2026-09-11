@@ -4,6 +4,7 @@ import java.util.List;
 
 import com.streamhub.common.api.ApiResponse;
 import com.streamhub.common.api.RequestUserId;
+import com.streamhub.common.api.PageResult;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
@@ -62,6 +63,14 @@ public class GiftController {
     @GetMapping("/gift-orders/{orderNo}")
     public ApiResponse<GiftOrderView> getOrder(@PathVariable String orderNo) {
         return ApiResponse.success(giftService.findOrder(orderNo));
+    }
+
+    @GetMapping("/gift-orders/mine")
+    public ApiResponse<PageResult<GiftOrderView>> myOrders(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            HttpServletRequest request) {
+        return ApiResponse.success(giftService.ordersForUser(RequestUserId.required(request), page, pageSize));
     }
 
     @GetMapping("/live/rooms/{roomId}/gift-rank")

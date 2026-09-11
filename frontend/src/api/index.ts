@@ -7,11 +7,13 @@ import type {
   GiftCatalog,
   GiftOrder,
   LiveRoom,
+  ModerationLog,
   OpsSummary,
   PageResult,
   RankEntry,
   RoomDashboard,
   SensitiveWord,
+  AuditLog,
   UserProfile,
   Wallet,
   WsTicket,
@@ -62,6 +64,7 @@ export const giftApi = {
   send: (roomId: number, body: { giftCode: string; quantity: number; clientOrderNo: string }) =>
     request<GiftOrder>({ method: 'POST', url: `/v1/live/rooms/${roomId}/gifts`, data: body }),
   order: (orderNo: string) => request<GiftOrder>({ method: 'GET', url: `/v1/gift-orders/${orderNo}` }),
+  myOrders: (params: { page?: number; pageSize?: number } = {}) => request<PageResult<GiftOrder>>({ method: 'GET', url: '/v1/gift-orders/mine', params }),
   contributorRank: (roomId: number) => request<RankEntry[]>({ method: 'GET', url: `/v1/live/rooms/${roomId}/gift-rank` }),
   incomeRank: (roomId: number) => request<RankEntry[]>({ method: 'GET', url: `/v1/live/rooms/${roomId}/gift-income-rank` }),
 }
@@ -74,6 +77,7 @@ export const activityApi = {
   seckill: (activityId: number, clientOrderNo: string) =>
     request<ActivityOrder>({ method: 'POST', url: `/v1/activities/${activityId}/seckill`, data: { clientOrderNo } }),
   order: (orderNo: string) => request<ActivityOrder>({ method: 'GET', url: `/v1/activity-orders/${orderNo}` }),
+  myOrders: (params: { page?: number; pageSize?: number } = {}) => request<PageResult<ActivityOrder>>({ method: 'GET', url: '/v1/activity-orders/mine', params }),
 }
 
 export const opsApi = {
@@ -88,4 +92,8 @@ export const opsApi = {
   sensitiveWords: () => request<SensitiveWord[]>({ method: 'GET', url: '/v1/ops/sensitive-words' }),
   addSensitiveWord: (word: string) => request<SensitiveWord>({ method: 'POST', url: '/v1/ops/sensitive-words', data: { word } }),
   removeSensitiveWord: (id: number) => request<void>({ method: 'DELETE', url: `/v1/ops/sensitive-words/${id}` }),
+  auditLogs: (params: { page?: number; pageSize?: number } = {}) => request<PageResult<AuditLog>>({ method: 'GET', url: '/v1/ops/audit-logs', params }),
+  moderationLogs: (params: { page?: number; pageSize?: number } = {}) => request<PageResult<ModerationLog>>({ method: 'GET', url: '/v1/ops/moderation-logs', params }),
+  muteUser: (roomId: number, body: { userId: number; reason: string; expiresMinutes?: number | null }) => request<void>({ method: 'POST', url: `/v1/ops/rooms/${roomId}/mutes`, data: body }),
+  unmuteUser: (roomId: number, userId: number) => request<void>({ method: 'DELETE', url: `/v1/ops/rooms/${roomId}/mutes/${userId}` }),
 }

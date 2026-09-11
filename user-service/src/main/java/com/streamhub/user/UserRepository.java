@@ -3,6 +3,8 @@ package com.streamhub.user;
 import java.util.List;
 import java.util.Optional;
 
+import com.streamhub.common.api.PageResult;
+
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -55,5 +57,78 @@ public class UserRepository {
                 userId,
                 anchorId);
         return count != null && count > 0;
+    }
+
+    public UserProfile updateProfile(long userId, String nickname, String avatarUrl) {
+        jdbcTemplate.update(
+                "UPDATE sys_user SET nickname = ?, avatar_url = ?, updated_at = CURRENT_TIMESTAMP(3) WHERE id = ?",
+                nickname.trim(),
+                avatarUrl,
+                userId);
+        return findById(userId).orElseThrow();
+    }
+
+    public PageResult<UserProfile> page(String keyword, String role, String status, int page, int pageSize) {
+        int safePage = Math.max(1, page);
+        int safePageSize = Math.max(1, Math.min(pageSize, 100));
+        StringBuilder condition = new StringBuilder(" WHERE 1 = 1");
+        List<Object> args = new java.util.ArrayList<>();
+        if (keyword != null && !keyword.isBlank()) {
+            condition.append(" AND (u.username LIKE ? OR u.nickname LIKE ?)");
+            String value = "%" + keyword.trim() + "%";
+            args.add(value);
+            args.add(value);
+        }
+        if (role != null && !role.isBlank()) {
+            condition.append(" AND u.role = ?");
+            args.add(role.trim());
+        }
+        if (status != null && !status.isBlank()) {
+            condition.append(" AND u.status = ?");
+            args.add(status.trim());
+        }
+        long total = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM sys_user u" + condition,
+                Long.class,
+                args.toArray());
+        args.add(safePageSize);
+        args.add((safePage - 1) * safePageSize);
+        List<UserProfile> items = jdbcTemplate.query(
+                "SELECT u.id, u.username, u.nickname, u.avatar_url, u.role, u.status, "
+                        + "(SELECT COUNT(*) FROM user_follow f WHERE f.anchor_id = u.id) AS follower_count "
+                        + "FROM sys_user u" + condition + " ORDER BY u.id DESC LIMIT ? OFFSET ?",
+                (resultSet, rowNum) -> new UserProfile(
+                        resultSet.getLong("id"),
+                        resultSet.getString("username"),
+                        resultSet.getString("nickname"),
+                        resultSet.getString("avatar_url"),
+                        resultSet.getString("role"),
+                        resultSet.getString("status"),
+                        resultSet.getLong("follower_count")),
+                args.toArray());
+        return PageResult.of(items, safePage, safePageSize, total);
+    }
+
+    public UserProfile changeStatus(long userId, String status) {
+        jdbcTemplate.update(
+                "UPDATE sys_user SET status = ?, updated_at = CURRENT_TIMESTAMP(3) WHERE id = ?",
+                status,
+                userId);
+        return findById(userId).orElseThrow();
+    }
+
+    public long countByStatus(String status) {
+        Long count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sys_user WHERE status = ?", Long.class, status);
+        return count == null ? 0 : count;
+    }
+
+    public void appendAudit(long operatorId, String action, String targetType, String targetId, String reason) {
+        jdbcTemplate.update(
+                "INSERT INTO ops_audit_log(operator_id, action, target_type, target_id, reason) VALUES (?, ?, ?, ?, ?)",
+                operatorId,
+                action,
+                targetType,
+                targetId,
+                reason);
     }
 }

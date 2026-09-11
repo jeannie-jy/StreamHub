@@ -53,6 +53,11 @@ public class ChatMessageRepository {
                 safeLimit);
     }
 
+    public long countByRoom(long roomId) {
+        Long count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM chat_message WHERE room_id = ?", Long.class, roomId);
+        return count == null ? 0 : count;
+    }
+
     private ChatMessage findById(long messageId) {
         return jdbcTemplate.queryForObject(
                 "SELECT id, room_id, user_id, client_message_id, content, created_at "

@@ -2,7 +2,7 @@
 
 基于 Spring Boot 微服务架构的高并发直播互动与虚拟礼物平台。
 
-项目计划见 [PLAN.md](PLAN.md)。当前已完成 Phase 0、Phase 1、Phase 2 和 Phase 3，Phase 4 已完成主要代码交付，Phase 5 已加入监控、压测脚本和工程化文档。
+项目计划见 [PLAN.md](PLAN.md)。当前已完成 Phase 0、Phase 1、Phase 2 和 Phase 3，Phase 4 已完成主要代码交付，Phase 5 已加入监控、压测脚本和工程化文档，前端产品化页面与运营治理接口已接入。
 
 ## 本地启动
 
@@ -11,6 +11,21 @@
 ```powershell
 docker compose up -d
 mvn clean verify
+```
+
+`docker compose up -d` 会同时启动基础设施和 Web 容器，Web 默认入口为 `http://localhost:8089`。当前 Java 微服务仍可按下方命令直接运行，Web 容器通过 `host.docker.internal` 代理本机的 API Gateway、Realtime Gateway 和 SRS；部署到同一容器网络时只需把 `frontend/nginx.conf` 中的 upstream 替换为对应服务名。
+
+前端开发和检查：
+
+```powershell
+cd frontend
+npm ci
+npm run dev
+npm run typecheck
+npm run lint
+npm test
+npm run test:e2e
+npm run build
 ```
 
 启动五个服务：
@@ -61,17 +76,17 @@ $roomId = $room.data.id
 Invoke-RestMethod "http://localhost:8088/api/v1/live/rooms/$roomId/start" -Method Post -Headers $headers
 ```
 
-开播响应会返回 SRS RTMP 推流地址和 HTTP-FLV 播放地址。经 Gateway 访问写接口时使用 `Authorization: Bearer {accessToken}`；Gateway 调用 Auth 服务校验 Token 后覆盖传入的 `X-User-Id`。直接访问业务服务进行本地排查时仍支持 `X-User-Id`。
+开播响应会返回 SRS RTMP 推流地址、WebRTC 播放地址和 HTTP-FLV 播放地址。前端优先使用 WebRTC，浏览器不支持或信令失败时自动切换 HTTP-FLV。经 Gateway 访问写接口时使用 `Authorization: Bearer {accessToken}`；Gateway 调用 Auth 服务校验 Token 后覆盖传入的 `X-User-Id` 和 `X-User-Role`。直接访问业务服务进行本地排查时仍支持 `X-User-Id`。
 
 直播服务创建房间时会通过 OpenFeign 调用 User 服务校验主播用户，服务发现由 Nacos 提供，连接超时和读取超时可通过 `USER_SERVICE_CONNECT_TIMEOUT_MS` 与 `USER_SERVICE_READ_TIMEOUT_MS` 调整。
 
 WebSocket 弹幕地址（独立实时网关）：
 
 ```text
-ws://localhost:8090/ws/chat?roomId={roomId}&userId={userId}
+ws://localhost:8090/ws/chat?roomId={roomId}&ticket={one-time-ticket}
 ```
 
-连接 Realtime Gateway 时可以附带 `Authorization: Bearer {accessToken}`，网关会用 Token 覆盖查询参数中的 `userId`；未带 Token 时保留本地 MVP 的查询参数鉴权方式。直接访问直播服务进行排查时，也可以使用 `ws://localhost:8083/ws/chat`。API Gateway `8088` 专注 HTTP，Realtime Gateway `8090` 专注 WebSocket 长连接。Nacos 地址、配置中心开关和配置分组见 [.env.example](.env.example) 中的 `NACOS_SERVER_ADDR`、`NACOS_DISCOVERY_ENABLED`、`NACOS_CONFIG_ENABLED` 与 `NACOS_CONFIG_GROUP`。
+连接 Realtime Gateway 时由前端先调用 `/api/v1/auth/ws-ticket` 取得 30 秒有效的一次性 Ticket；Gateway 消费 Ticket 后才把可信用户 ID 注入下游。直接访问直播服务进行排查时，也可以使用 `ws://localhost:8083/ws/chat`。API Gateway `8088` 专注 HTTP，Realtime Gateway `8090` 专注 WebSocket 长连接。Nacos 地址、配置中心开关和配置分组见 [.env.example](.env.example) 中的 `NACOS_SERVER_ADDR`、`NACOS_DISCOVERY_ENABLED`、`NACOS_CONFIG_ENABLED` 与 `NACOS_CONFIG_GROUP`。
 
 直播服务实例使用 Redis Pub/Sub 的 `STREAMHUB_REALTIME_CHANNEL` 广播聊天、礼物和活动事件；每个实例只向自己持有的 WebSocket 连接发送消息。通过 `STREAMHUB_NODE_ID` 设置实例标识，便于日志和多节点排查。单实例单房间连接数和普通弹幕广播速率分别由 `STREAMHUB_MAX_SESSIONS_PER_ROOM` 与 `STREAMHUB_MAX_CHAT_EVENTS_PER_SECOND` 限制，触发速率保护的弹幕仍保存在 MySQL，可通过历史接口补偿；广播计数可从 `/actuator/metrics` 观察。
 

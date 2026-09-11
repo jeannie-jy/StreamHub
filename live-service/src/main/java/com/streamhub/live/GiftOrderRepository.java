@@ -7,6 +7,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
+import com.streamhub.common.api.PageResult;
+
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -73,6 +75,39 @@ public class GiftOrderRepository {
 
     public List<Long> findRankRoomIds() {
         return jdbcTemplate.queryForList("SELECT DISTINCT room_id FROM gift_order", Long.class);
+    }
+
+    public PageResult<GiftOrder> findBySenderId(long senderId, int page, int pageSize) {
+        int safePage = Math.max(1, page);
+        int safePageSize = Math.max(1, Math.min(pageSize, 100));
+        Long total = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM gift_order WHERE sender_id = ?", Long.class, senderId);
+        List<GiftOrder> items = query(
+                SELECT_ORDER + "WHERE o.sender_id = ? ORDER BY o.id DESC LIMIT ? OFFSET ?",
+                senderId,
+                safePageSize,
+                (safePage - 1) * safePageSize);
+        return PageResult.of(items, safePage, safePageSize, total == null ? 0 : total);
+    }
+
+    public long countAll() {
+        Long count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM gift_order", Long.class);
+        return count == null ? 0 : count;
+    }
+
+    public long countPending() {
+        Long count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM gift_order WHERE status = 'PENDING'", Long.class);
+        return count == null ? 0 : count;
+    }
+
+    public long countByRoom(long roomId) {
+        Long count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM gift_order WHERE room_id = ? AND status = 'SUCCESS'", Long.class, roomId);
+        return count == null ? 0 : count;
+    }
+
+    public long sumByRoom(long roomId) {
+        Long sum = jdbcTemplate.queryForObject("SELECT COALESCE(SUM(total_amount), 0) FROM gift_order WHERE room_id = ? AND status = 'SUCCESS'", Long.class, roomId);
+        return sum == null ? 0 : sum;
     }
 
     public List<GiftRankEntry> contributorRank(long roomId) {

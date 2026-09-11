@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { NButton, NSpin, NTag } from 'naive-ui'
 import mpegts from 'mpegts.js'
 
@@ -15,6 +15,7 @@ const hasVideo = computed(() => Boolean(props.webrtcUrl || props.flvUrl))
 watch(() => [props.webrtcUrl, props.flvUrl], () => void start(), { immediate: true })
 
 async function start() {
+  await nextTick()
   cleanup()
   errorMessage.value = ''
   if (!hasVideo.value) {

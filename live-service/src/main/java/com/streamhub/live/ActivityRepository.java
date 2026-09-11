@@ -58,11 +58,54 @@ public class ActivityRepository {
                 + "created_at, updated_at FROM activity WHERE status = 'ACTIVE' ORDER BY id");
     }
 
+    public List<Activity> findByRoomId(long roomId) {
+        return query("SELECT id, room_id, name, stock, unit_price, status, starts_at, ends_at, "
+                + "created_at, updated_at FROM activity WHERE room_id = ? ORDER BY id DESC", roomId);
+    }
+
+    public List<Activity> page(String status, int page, int pageSize) {
+        int safePage = Math.max(1, page);
+        int safePageSize = Math.max(1, Math.min(pageSize, 100));
+        String condition = status == null || status.isBlank() ? "" : " WHERE status = ?";
+        List<Activity> values = condition.isEmpty()
+                ? query("SELECT id, room_id, name, stock, unit_price, status, starts_at, ends_at, "
+                        + "created_at, updated_at FROM activity ORDER BY id DESC LIMIT ? OFFSET ?",
+                        safePageSize, (safePage - 1) * safePageSize)
+                : query("SELECT id, room_id, name, stock, unit_price, status, starts_at, ends_at, "
+                        + "created_at, updated_at FROM activity WHERE status = ? ORDER BY id DESC LIMIT ? OFFSET ?",
+                        status.trim(), safePageSize, (safePage - 1) * safePageSize);
+        return values;
+    }
+
+    public long count(String status) {
+        Long count = status == null || status.isBlank()
+                ? jdbcTemplate.queryForObject("SELECT COUNT(*) FROM activity", Long.class)
+                : jdbcTemplate.queryForObject("SELECT COUNT(*) FROM activity WHERE status = ?", Long.class, status.trim());
+        return count == null ? 0 : count;
+    }
+
     public boolean activate(long activityId) {
         return jdbcTemplate.update(
                 "UPDATE activity SET status = 'ACTIVE', updated_at = CURRENT_TIMESTAMP(3) "
                         + "WHERE id = ? AND status = 'DRAFT'",
                 activityId) == 1;
+    }
+
+    public boolean stop(long activityId) {
+        return jdbcTemplate.update(
+                "UPDATE activity SET status = 'STOPPED', updated_at = CURRENT_TIMESTAMP(3) "
+                        + "WHERE id = ? AND status IN ('DRAFT', 'ACTIVE')",
+                activityId) == 1;
+    }
+
+    public void appendAudit(long operatorId, String action, String targetType, String targetId, String reason) {
+        jdbcTemplate.update(
+                "INSERT INTO ops_audit_log(operator_id, action, target_type, target_id, reason) VALUES (?, ?, ?, ?, ?)",
+                operatorId,
+                action,
+                targetType,
+                targetId,
+                reason);
     }
 
     private List<Activity> query(String sql, Object... args) {

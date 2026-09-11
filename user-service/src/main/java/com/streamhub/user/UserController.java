@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -28,6 +29,11 @@ public class UserController {
         UserProfile profile = userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "用户不存在"));
         return ApiResponse.success(profile);
+    }
+
+    @GetMapping("/internal/banned-count")
+    public ApiResponse<Long> countBannedUsers() {
+        return ApiResponse.success(userRepository.countByStatus("BANNED"));
     }
 
     @PostMapping("/{anchorId}/follow")
@@ -60,5 +66,20 @@ public class UserController {
         return ApiResponse.success(Map.of(
                 "following", userRepository.isFollowing(userId, anchorId),
                 "anchorId", anchorId));
+    }
+
+    @PutMapping("/me")
+    public ApiResponse<UserProfile> updateMe(
+            @jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody UpdateProfileRequest request,
+            HttpServletRequest httpRequest) {
+        return ApiResponse.success(userRepository.updateProfile(
+                RequestUserId.required(httpRequest),
+                request.nickname(),
+                request.avatarUrl()));
+    }
+
+    public record UpdateProfileRequest(
+            @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max = 64) String nickname,
+            @jakarta.validation.constraints.Size(max = 512) String avatarUrl) {
     }
 }

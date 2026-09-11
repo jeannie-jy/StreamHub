@@ -18,7 +18,15 @@ const loading = ref(true)
 const saving = ref(false)
 
 onMounted(async () => {
-  try { profile.value = await users.loadProfile(auth.userId); auth.setProfile(profile.value); nickname.value = profile.value.nickname; wallet.value = await giftApi.wallet() } finally { loading.value = false }
+  try {
+    profile.value = await users.loadProfile(auth.userId)
+    auth.setProfile(profile.value)
+    nickname.value = profile.value.nickname
+    wallet.value = await giftApi.wallet()
+    const [giftPage, activityPage] = await Promise.all([giftApi.myOrders({ page: 1, pageSize: 20 }), activityApi.myOrders({ page: 1, pageSize: 20 })])
+    giftOrders.value = giftPage.items
+    activityOrders.value = activityPage.items
+  } finally { loading.value = false }
 })
 
 async function save() {

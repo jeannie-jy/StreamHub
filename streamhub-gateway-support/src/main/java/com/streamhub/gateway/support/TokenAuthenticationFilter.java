@@ -3,6 +3,7 @@ package com.streamhub.gateway.support;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Map;
 
 import org.springframework.core.Ordered;
 import org.springframework.core.ParameterizedTypeReference;
@@ -36,9 +37,28 @@ public class TokenAuthenticationFilter implements GlobalFilter, Ordered {
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         String path = exchange.getRequest().getURI().getPath();
         String authorization = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
-        if (isPublic(path, exchange.getRequest().getMethod())
-                || (path.startsWith("/ws/") && !StringUtils.hasText(authorization))) {
+        if (isPublic(path, exchange.getRequest().getMethod())) {
             return chain.filter(exchange);
+        }
+        if (path.startsWith("/ws/") && !StringUtils.hasText(authorization)) {
+            String ticket = exchange.getRequest().getQueryParams().getFirst("ticket");
+            if (!StringUtils.hasText(ticket)) {
+                return unauthorized(exchange);
+            }
+            return webClientBuilder.build()
+                    .post()
+                    .uri("http://streamhub-auth/api/v1/auth/ws-ticket/introspect")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(Map.of("ticket", ticket))
+                    .retrieve()
+                    .bodyToMono(SESSION_TYPE)
+                    .flatMap(response -> {
+                        if (response == null || !response.success() || response.data() == null) {
+                            return unauthorized(exchange);
+                        }
+                        return chain.filter(withUserId(exchange, response.data().userId(), response.data().role(), path));
+                    })
+                    .onErrorResume(ignored -> unauthorized(exchange));
         }
         if (!isBearerToken(authorization)) {
             return unauthorized(exchange);
@@ -54,7 +74,7 @@ public class TokenAuthenticationFilter implements GlobalFilter, Ordered {
                     if (response == null || !response.success() || response.data() == null) {
                         return unauthorized(exchange);
                     }
-                    return chain.filter(withUserId(exchange, response.data().userId(), path));
+                    return chain.filter(withUserId(exchange, response.data().userId(), response.data().role(), path));
                 })
                 .onErrorResume(ignored -> unauthorized(exchange));
     }
@@ -69,7 +89,10 @@ public class TokenAuthenticationFilter implements GlobalFilter, Ordered {
                 || "/api/v1/auth/register".equals(path)
                 || "/api/v1/auth/login".equals(path)
                 || "/api/v1/auth/ping".equals(path)
+                || "/api/v1/auth/refresh".equals(path)
+                || "/api/v1/auth/logout".equals(path)
                 || "/api/v1/gifts".equals(path)
+                || "/api/v1/live/rooms".equals(path)
                 || "/api/v1/live/ping".equals(path)) {
             return true;
         }
@@ -77,6 +100,7 @@ public class TokenAuthenticationFilter implements GlobalFilter, Ordered {
                 && ("/api/v1/users/ping".equals(path)
                         || numericIdPath(path, "/api/v1/users/")
                         || numericIdPath(path, "/api/v1/live/rooms/")
+                        || path.matches("/api/v1/live/rooms/\\d+/activities")
                         || path.matches("/api/v1/live/rooms/\\d+/messages")
                         || path.matches("/api/v1/live/rooms/\\d+/gift-rank")
                         || path.matches("/api/v1/live/rooms/\\d+/gift-income-rank")
@@ -94,11 +118,15 @@ public class TokenAuthenticationFilter implements GlobalFilter, Ordered {
                 && StringUtils.hasText(authorization.substring(7));
     }
 
-    private ServerWebExchange withUserId(ServerWebExchange exchange, long userId, String path) {
+    private ServerWebExchange withUserId(ServerWebExchange exchange, long userId, String role, String path) {
         ServerHttpRequest request = exchange.getRequest().mutate()
                 .headers(headers -> {
                     headers.remove("X-User-Id");
                     headers.set("X-User-Id", String.valueOf(userId));
+                    headers.remove("X-User-Role");
+                    if (StringUtils.hasText(role)) {
+                        headers.set("X-User-Role", role);
+                    }
                 })
                 .uri(withWebSocketUserId(exchange.getRequest().getURI(), userId, path))
                 .build();
@@ -111,6 +139,7 @@ public class TokenAuthenticationFilter implements GlobalFilter, Ordered {
         }
         return UriComponentsBuilder.fromUri(original)
                 .replaceQueryParam("userId", userId)
+                .replaceQueryParam("ticket")
                 .build(true)
                 .toUri();
     }
@@ -123,7 +152,7 @@ public class TokenAuthenticationFilter implements GlobalFilter, Ordered {
         return exchange.getResponse().writeWith(Mono.just(exchange.getResponse().bufferFactory().wrap(body)));
     }
 
-    public record AuthSession(long userId, Instant expiresAt) {
+    public record AuthSession(long userId, Instant expiresAt, String role) {
     }
 
     public record RemoteApiResponse<T>(

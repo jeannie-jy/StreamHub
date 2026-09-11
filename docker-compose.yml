@@ -102,6 +102,17 @@ services:
       - "8000:8000/udp"
     networks: [streamhub]
 
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "${WEB_PORT:-8089}:80"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    networks: [streamhub]
+
   minio:
     image: minio/minio:RELEASE.2024-06-13T22-53-53Z
     command: ["server", "/data", "--console-address", ":9001"]

@@ -12,6 +12,9 @@ public record LiveRoomView(
         long onlineCount,
         String pushUrl,
         String playbackUrl,
+        String webrtcPlaybackUrl,
+        String anchorNickname,
+        String anchorAvatarUrl,
         Instant createdAt,
         Instant updatedAt) {
 }

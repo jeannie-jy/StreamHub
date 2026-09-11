@@ -49,7 +49,8 @@ management:
 streamhub:
   media:
     rtmp-publish-base: ${MEDIA_RTMP_PUBLISH_BASE:rtmp://localhost:1935/live/}
-    http-flv-play-base: ${MEDIA_HTTP_FLV_PLAY_BASE:http://localhost:8080/live/}
+    http-flv-play-base: ${MEDIA_HTTP_FLV_PLAY_BASE:/live/}
+    webrtc-play-base: ${MEDIA_WEBRTC_PLAY_BASE:/rtc/v1/whep/?app=live&stream=}
   realtime:
     channel: ${STREAMHUB_REALTIME_CHANNEL:live:room:events}
     node-id: ${STREAMHUB_NODE_ID:local}

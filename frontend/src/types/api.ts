@@ -159,3 +159,13 @@ export interface AuditLog {
   reason?: string | null
   createdAt: string
 }
+
+export interface ModerationLog {
+  id: number
+  roomId: number
+  userId: number
+  content: string
+  matchedWord: string
+  action: string
+  createdAt: string
+}
