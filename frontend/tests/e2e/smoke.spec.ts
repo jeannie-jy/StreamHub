@@ -17,11 +17,11 @@ test.beforeEach(async ({ page }) => {
 test('discover page renders a live room', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByText('夜航电台')).toBeVisible()
-  await expect(page.getByText('发现正在发生的现场')).toBeVisible()
+  await expect(page.getByText('每一次互动')).toBeVisible()
 })
 
 test('mobile viewport keeps the discover page usable', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: /发现正在发生的现场/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /每一次互动/ })).toBeVisible()
   await expect(page.locator('.room-grid')).toBeVisible()
 })
