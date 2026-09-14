@@ -2,6 +2,7 @@ package com.streamhub.live;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -55,7 +56,8 @@ public class RoomWebSocketHandler extends TextWebSocketHandler {
         Map<String, String> query = queryParameters(session);
         Long roomId = parsePositiveLong(query.get("roomId"));
         Long userId = parsePositiveLong(query.get("userId"));
-        if (roomId == null || userId == null || liveRoomRepository.findById(roomId).isEmpty() || !isActiveUser(userId)) {
+        UserProfileSnapshot profile = userId == null ? null : activeUserProfile(userId);
+        if (roomId == null || userId == null || liveRoomRepository.findById(roomId).isEmpty() || profile == null) {
             session.close(CloseStatus.POLICY_VIOLATION);
             return;
         }
@@ -115,7 +117,8 @@ public class RoomWebSocketHandler extends TextWebSocketHandler {
                     "message", "弹幕包含敏感内容，请修改后重试"));
             return;
         }
-        if (!isActiveUser(userId)) {
+        UserProfileSnapshot profile = activeUserProfile(userId);
+        if (profile == null) {
             sendError(session, "账号已被封禁");
             session.close(CloseStatus.POLICY_VIOLATION);
             return;
@@ -135,14 +138,17 @@ public class RoomWebSocketHandler extends TextWebSocketHandler {
                 userId,
                 command.clientMessageId(),
                 command.content().trim());
-        roomBroadcastService.publish(roomId, Map.of(
-                "type", "CHAT",
-                "id", saved.id(),
-                "roomId", saved.roomId(),
-                "userId", saved.userId(),
-                "clientMessageId", saved.clientMessageId(),
-                "content", saved.content(),
-                "createdAt", saved.createdAt()));
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("type", "CHAT");
+        payload.put("id", saved.id());
+        payload.put("roomId", saved.roomId());
+        payload.put("userId", saved.userId());
+        payload.put("nickname", StringUtils.hasText(profile.nickname()) ? profile.nickname() : profile.username());
+        payload.put("avatarUrl", profile.avatarUrl());
+        payload.put("clientMessageId", saved.clientMessageId());
+        payload.put("content", saved.content());
+        payload.put("createdAt", saved.createdAt());
+        roomBroadcastService.publish(roomId, payload);
     }
 
     @Override
@@ -195,14 +201,17 @@ public class RoomWebSocketHandler extends TextWebSocketHandler {
         return value instanceof Long ? (Long) value : null;
     }
 
-    private boolean isActiveUser(long userId) {
+    private UserProfileSnapshot activeUserProfile(long userId) {
         try {
             var response = userServiceClient.getProfile(userId);
-            return response != null && response.success() && response.data() != null
-                    && "ACTIVE".equals(response.data().status());
+            if (response != null && response.success() && response.data() != null
+                    && "ACTIVE".equals(response.data().status())) {
+                return response.data();
+            }
         } catch (RuntimeException exception) {
-            return false;
+            return null;
         }
+        return null;
     }
 
     public record ChatCommand(String type, String clientMessageId, String content) {
