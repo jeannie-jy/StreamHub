@@ -9,7 +9,7 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-streamhub}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-streamhub-root}
     ports:
-      - "3306:3306"
+      - "${MYSQL_PORT:-13306}:3306"
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
@@ -102,14 +102,171 @@ services:
       - "8000:8000/udp"
     networks: [streamhub]
 
+  auth-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: auth-service
+    environment: &business-service-environment
+      DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-streamhub}?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&createDatabaseIfNotExist=true
+      DB_USERNAME: ${MYSQL_USER:-streamhub}
+      DB_PASSWORD: ${MYSQL_PASSWORD:-streamhub}
+      REDIS_HOST: redis
+      NACOS_SERVER_ADDR: nacos:8848
+      NACOS_DISCOVERY_ENABLED: "true"
+      NACOS_CONFIG_ENABLED: "true"
+      NACOS_CONFIG_GROUP: ${NACOS_CONFIG_GROUP:-STREAMHUB}
+    ports:
+      - "${AUTH_SERVICE_PORT:-8081}:8081"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8081/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
+    restart: unless-stopped
+    networks: [streamhub]
+
+  user-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: user-service
+    environment:
+      <<: *business-service-environment
+    ports:
+      - "${USER_SERVICE_PORT:-8082}:8082"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8082/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
+    restart: unless-stopped
+    networks: [streamhub]
+
+  live-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: live-service
+    environment:
+      <<: *business-service-environment
+      ROCKETMQ_NAMESRV_ADDR: rocketmq-namesrv:9876
+      MEDIA_RTMP_PUBLISH_BASE: ${MEDIA_RTMP_PUBLISH_BASE:-rtmp://localhost:1935/live/}
+      MEDIA_HTTP_FLV_PLAY_BASE: ${MEDIA_HTTP_FLV_PLAY_BASE:-/live/}
+      MEDIA_WEBRTC_PLAY_BASE: ${MEDIA_WEBRTC_PLAY_BASE:-/rtc/v1/whep/?app=live&stream=}
+      STREAMHUB_NODE_ID: compose-live-1
+    ports:
+      - "${LIVE_SERVICE_PORT:-8083}:8083"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+      rocketmq-broker:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8083/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 45s
+    restart: unless-stopped
+    networks: [streamhub]
+
+  gateway-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: gateway-service
+    environment:
+      NACOS_SERVER_ADDR: nacos:8848
+      NACOS_DISCOVERY_ENABLED: "true"
+      NACOS_CONFIG_ENABLED: "true"
+      NACOS_CONFIG_GROUP: ${NACOS_CONFIG_GROUP:-STREAMHUB}
+    ports:
+      - "${GATEWAY_SERVICE_PORT:-8088}:8088"
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+      live-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8088/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+    networks: [streamhub]
+
+  realtime-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: realtime-gateway
+    environment:
+      NACOS_SERVER_ADDR: nacos:8848
+      NACOS_DISCOVERY_ENABLED: "true"
+      NACOS_CONFIG_ENABLED: "true"
+      NACOS_CONFIG_GROUP: ${NACOS_CONFIG_GROUP:-STREAMHUB}
+    ports:
+      - "${REALTIME_GATEWAY_PORT:-8090}:8090"
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      live-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8090/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+    networks: [streamhub]
+
   web:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
       - "${WEB_PORT:-8089}:80"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    environment:
+      API_UPSTREAM: gateway-service:8088
+      REALTIME_UPSTREAM: realtime-gateway:8090
+      MEDIA_UPSTREAM: srs:8080
+      RTC_UPSTREAM: srs:1985
+      NGINX_ENVSUBST_FILTER: ^(API_UPSTREAM|REALTIME_UPSTREAM|MEDIA_UPSTREAM|RTC_UPSTREAM)$$
+    depends_on:
+      gateway-service:
+        condition: service_healthy
+      realtime-gateway:
+        condition: service_healthy
+      srs:
+        condition: service_started
     restart: unless-stopped
     networks: [streamhub]
 
@@ -138,8 +295,6 @@ services:
       - --storage.tsdb.path=/prometheus
     ports:
       - "${PROMETHEUS_PORT:-9090}:9090"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus

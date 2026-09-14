@@ -2,18 +2,39 @@
 
 基于 Spring Boot 微服务架构的高并发直播互动与虚拟礼物平台。
 
-项目计划见 [PLAN.md](PLAN.md)。当前已完成 Phase 0、Phase 1、Phase 2 和 Phase 3，Phase 4 已完成主要代码交付，Phase 5 已加入监控、压测脚本和工程化文档，前端产品化页面与运营治理接口已接入。
+项目计划见 [PLAN.md](PLAN.md)。当前已完成 Phase 0、Phase 1、Phase 2、Phase 3 和 Phase 4，Phase 5 已加入监控、压测脚本和工程化文档。前端产品化页面、认证恢复、直播互动、关注收藏和运营治理接口均已接入。
+
+## 当前产品能力
+
+- 游客可以浏览公开直播、房间信息、历史弹幕和礼物目录。
+- 用户可以注册、登录、刷新会话、退出登录，并在刷新页面后恢复登录状态。
+- 登录用户可以发送弹幕、关注主播、收藏直播间、送礼、参与活动和管理订单。
+- 主播可以创建直播间、开始或结束直播、复制推流地址和管理房间活动。
+- 播放器优先使用 WebRTC，信令失败或浏览器不支持时回退到 HTTP-FLV，并支持手动播放、重试和卸载清理。
+- 个人中心和关注内容页提供关注主播、关注直播间、收藏直播间和订单查询。
+- 前端采用暖白内容社区风格，图标统一使用 SVG、CSS 图形或文字，源码、页面文案和测试数据不使用 emoji。
+
+关注与收藏接口、认证约定和完整 API 列表见 [docs/api.md](docs/api.md)。数据库迁移包含 `V6__social_relationships.sql`。
 
 ## 本地启动
 
 环境要求：Java 17+、Maven 3.9+、Docker Desktop。
 
 ```powershell
-docker compose up -d
-mvn clean verify
+docker compose up -d --build
 ```
 
-`docker compose up -d` 会同时启动基础设施和 Web 容器，Web 默认入口为 `http://localhost:8089`。当前 Java 微服务仍可按下方命令直接运行，Web 容器通过 `host.docker.internal` 代理本机的 API Gateway、Realtime Gateway 和 SRS；部署到同一容器网络时只需把 `frontend/nginx.conf` 中的 upstream 替换为对应服务名。
+`docker compose up -d --build` 会构建并启动基础设施、五个 Java 微服务和最新 Web 容器，Web 默认入口为 `http://localhost:8089`。业务服务在 MySQL、Redis 和 Nacos 健康后启动，Web 则在两个网关健康后启动；容器间统一使用 Compose 服务名通信，不依赖容易因宿主机网络变化而失效的局域网地址。
+
+使用 `docker compose ps` 检查所有服务状态；首次构建需要下载 Maven 与 npm 依赖，耗时会较长。若页面提示“服务正在启动或暂时不可用”，可用 `docker compose logs -f gateway-service live-service` 查看上游启动日志。
+
+仅修改前端后，可以使用以下命令更新 8089 上的页面：
+
+```powershell
+docker compose up -d --build web
+```
+
+如果浏览器仍显示旧样式，请执行强制刷新。前端资源文件使用内容哈希，容器重建后会引用新的资源地址。
 
 前端开发和检查：
 
@@ -28,7 +49,20 @@ npm run test:e2e
 npm run build
 ```
 
-启动五个服务：
+推荐在提交前执行完整检查：
+
+```powershell
+cd frontend
+npm run typecheck
+npm run lint
+npm run test
+npm run test:e2e
+npm run build
+cd ..
+mvn -B verify
+```
+
+不使用 Docker 运行 Java 服务时，先启动 Compose 基础设施，再在不同终端启动五个服务：
 
 ```powershell
 mvn -pl auth-service spring-boot:run
@@ -37,6 +71,8 @@ mvn -pl live-service spring-boot:run
 mvn -pl gateway-service spring-boot:run
 mvn -pl realtime-gateway spring-boot:run
 ```
+
+前端开发服务器默认代理到宿主机 `8088` 和 `8090`。若只想使用宿主机 Java 服务配合容器 Web，可覆盖 `API_UPSTREAM` 和 `REALTIME_UPSTREAM` 后单独构建 Web；默认完整 Compose 模式使用 `gateway-service:8088` 与 `realtime-gateway:8090`。
 
 网关默认监听 `8088`，通过 Nacos 发现三个业务服务。统一入口示例：
 
@@ -54,7 +90,7 @@ Invoke-RestMethod http://localhost:8088/api/v1/gifts
 - `GET http://localhost:8083/api/v1/live/ping`
 - `GET http://localhost:8083/actuator/health`
 
-默认端口和本地凭据可通过环境变量覆盖，示例见 [.env.example](.env.example)。
+默认端口和本地凭据可通过环境变量覆盖，示例见 [.env.example](.env.example)。StreamHub 的 MySQL 容器默认发布到宿主机 `13306`，避免与本机已有的 MySQL 服务冲突；Java 服务会使用同一默认端口。
 
 ## Phase 1 MVP 示例
 

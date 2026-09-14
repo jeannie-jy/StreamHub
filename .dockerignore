@@ -1,0 +1,13 @@
+.git
+.github
+.idea
+.m2
+.mvn
+.runtime-logs
+runtime-logs
+frontend
+infra
+load-tests
+docs
+**/target
+**/*.log
