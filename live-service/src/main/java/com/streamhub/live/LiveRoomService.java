@@ -6,6 +6,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.UUID;
 import java.util.List;
+import java.util.Map;
 
 import com.streamhub.common.api.BusinessException;
 import com.streamhub.common.api.ErrorCode;
@@ -20,16 +21,19 @@ public class LiveRoomService {
     private final OnlinePresenceService onlinePresenceService;
     private final MediaProperties mediaProperties;
     private final UserServiceClient userServiceClient;
+    private final RoomFavoriteRepository roomFavoriteRepository;
 
     public LiveRoomService(
             LiveRoomRepository liveRoomRepository,
             OnlinePresenceService onlinePresenceService,
             MediaProperties mediaProperties,
-            UserServiceClient userServiceClient) {
+            UserServiceClient userServiceClient,
+            RoomFavoriteRepository roomFavoriteRepository) {
         this.liveRoomRepository = liveRoomRepository;
         this.onlinePresenceService = onlinePresenceService;
         this.mediaProperties = mediaProperties;
         this.userServiceClient = userServiceClient;
+        this.roomFavoriteRepository = roomFavoriteRepository;
     }
 
     public LiveRoomView create(long anchorId, CreateRoomRequest request) {
@@ -76,6 +80,26 @@ public class LiveRoomService {
         return new PageResult<>(items, result.page(), result.pageSize(), result.total(), result.hasNext());
     }
 
+    public PageResult<LiveRoomView> following(long userId, int page, int pageSize) {
+        return toPage(liveRoomRepository.pageFollowing(userId, page, pageSize));
+    }
+
+    public PageResult<LiveRoomView> favorites(long userId, int page, int pageSize) {
+        return toPage(liveRoomRepository.pageFavorites(userId, page, pageSize));
+    }
+
+    public Map<String, Boolean> favoriteStatus(long userId, long roomId) {
+        findRoom(roomId);
+        return Map.of("favorite", roomFavoriteRepository.exists(userId, roomId));
+    }
+
+    public Map<String, Boolean> favorite(long userId, long roomId, boolean value) {
+        findRoom(roomId);
+        if (value) roomFavoriteRepository.add(userId, roomId);
+        else roomFavoriteRepository.remove(userId, roomId);
+        return Map.of("favorite", value);
+    }
+
     public LiveRoomView update(long roomId, long anchorId, CreateRoomRequest request) {
         LiveRoom room = findRoom(roomId);
         checkAnchor(room, anchorId);
@@ -95,6 +119,10 @@ public class LiveRoomService {
     private LiveRoom findRoom(long roomId) {
         return liveRoomRepository.findById(roomId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "直播间不存在"));
+    }
+
+    private PageResult<LiveRoomView> toPage(PageResult<LiveRoom> result) {
+        return new PageResult<>(result.items().stream().map(room -> toView(room, null)).toList(), result.page(), result.pageSize(), result.total(), result.hasNext());
     }
 
     private void checkAnchor(LiveRoom room, long anchorId) {
@@ -130,8 +158,8 @@ public class LiveRoomService {
                 room.status(),
                 onlinePresenceService.onlineCount(room.id()),
                 pushUrl,
-                playbackUrl(room.id()),
-                webrtcPlaybackUrl(room.id()),
+                "LIVE".equals(room.status()) ? playbackUrl(room.id()) : null,
+                "LIVE".equals(room.status()) ? webrtcPlaybackUrl(room.id()) : null,
                 anchor == null ? null : anchor.nickname(),
                 anchor == null ? null : anchor.avatarUrl(),
                 room.createdAt(),

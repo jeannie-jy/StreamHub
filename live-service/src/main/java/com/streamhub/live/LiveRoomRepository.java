@@ -139,6 +139,48 @@ public class LiveRoomRepository {
         return PageResult.of(items, safePage, safePageSize, total == null ? 0 : total);
     }
 
+    public PageResult<LiveRoom> pageFollowing(long userId, int page, int pageSize) {
+        return pageByRelation(
+                "EXISTS (SELECT 1 FROM user_follow f WHERE f.user_id = ? AND f.anchor_id = r.anchor_id)",
+                userId,
+                page,
+                pageSize);
+    }
+
+    public PageResult<LiveRoom> pageFavorites(long userId, int page, int pageSize) {
+        return pageByRelation(
+                "EXISTS (SELECT 1 FROM live_room_favorite f WHERE f.user_id = ? AND f.room_id = r.id)",
+                userId,
+                page,
+                pageSize);
+    }
+
+    private PageResult<LiveRoom> pageByRelation(String relation, long userId, int page, int pageSize) {
+        int safePage = Math.max(1, page);
+        int safePageSize = Math.max(1, Math.min(pageSize, 100));
+        Long total = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM live_room r WHERE " + relation,
+                Long.class,
+                userId);
+        List<LiveRoom> items = jdbcTemplate.query(
+                "SELECT r.id, r.anchor_id, r.title, r.cover_url, r.category, r.status, r.created_at, r.updated_at "
+                        + "FROM live_room r WHERE " + relation
+                        + " ORDER BY r.status = 'LIVE' DESC, r.updated_at DESC LIMIT ? OFFSET ?",
+                (resultSet, rowNum) -> new LiveRoom(
+                        resultSet.getLong("id"),
+                        resultSet.getLong("anchor_id"),
+                        resultSet.getString("title"),
+                        resultSet.getString("cover_url"),
+                        resultSet.getString("category"),
+                        resultSet.getString("status"),
+                        resultSet.getTimestamp("created_at").toInstant(),
+                        resultSet.getTimestamp("updated_at").toInstant()),
+                userId,
+                safePageSize,
+                (safePage - 1) * safePageSize);
+        return PageResult.of(items, safePage, safePageSize, total == null ? 0 : total);
+    }
+
     public boolean adminStop(long roomId) {
         return jdbcTemplate.update(
                 "UPDATE live_room SET status = 'OFFLINE', updated_at = CURRENT_TIMESTAMP(3) "

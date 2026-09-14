@@ -1,11 +1,13 @@
 package com.streamhub.user;
 
+import java.util.List;
 import java.util.Map;
 
 import com.streamhub.common.api.ApiResponse;
 import com.streamhub.common.api.BusinessException;
 import com.streamhub.common.api.ErrorCode;
 import com.streamhub.common.api.RequestUserId;
+import com.streamhub.common.api.PageResult;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -13,6 +15,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -31,9 +34,22 @@ public class UserController {
         return ApiResponse.success(profile);
     }
 
+    @GetMapping("/internal/batch")
+    public ApiResponse<List<UserProfile>> getProfiles(@RequestParam List<Long> ids) {
+        return ApiResponse.success(userRepository.findByIds(ids));
+    }
+
     @GetMapping("/internal/banned-count")
     public ApiResponse<Long> countBannedUsers() {
         return ApiResponse.success(userRepository.countByStatus("BANNED"));
+    }
+
+    @GetMapping("/me/following")
+    public ApiResponse<PageResult<UserProfile>> following(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            HttpServletRequest request) {
+        return ApiResponse.success(userRepository.following(RequestUserId.required(request), page, pageSize));
     }
 
     @PostMapping("/{anchorId}/follow")

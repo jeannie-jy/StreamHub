@@ -84,20 +84,20 @@ public class TokenAuthenticationFilter implements GlobalFilter, Ordered {
         return -100;
     }
 
-    private boolean isPublic(String path, HttpMethod method) {
+    boolean isPublic(String path, HttpMethod method) {
         if (path.startsWith("/actuator/")
                 || "/api/v1/auth/register".equals(path)
                 || "/api/v1/auth/login".equals(path)
                 || "/api/v1/auth/ping".equals(path)
                 || "/api/v1/auth/refresh".equals(path)
-                || "/api/v1/auth/logout".equals(path)
-                || "/api/v1/gifts".equals(path)
-                || "/api/v1/live/rooms".equals(path)
-                || "/api/v1/live/ping".equals(path)) {
+                || "/api/v1/auth/logout".equals(path)) {
             return true;
         }
         return HttpMethod.GET.equals(method)
-                && ("/api/v1/users/ping".equals(path)
+                && ("/api/v1/gifts".equals(path)
+                        || "/api/v1/live/rooms".equals(path)
+                        || "/api/v1/live/ping".equals(path)
+                        || "/api/v1/users/ping".equals(path)
                         || numericIdPath(path, "/api/v1/users/")
                         || numericIdPath(path, "/api/v1/live/rooms/")
                         || path.matches("/api/v1/live/rooms/\\d+/activities")

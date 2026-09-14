@@ -36,6 +36,32 @@ public class UserRepository {
         return users.stream().findFirst();
     }
 
+    public List<UserProfile> findByIds(List<Long> userIds) {
+        List<Long> safeIds = userIds == null ? List.of() : userIds.stream()
+                .filter(java.util.Objects::nonNull)
+                .filter(id -> id > 0)
+                .distinct()
+                .limit(100)
+                .toList();
+        if (safeIds.isEmpty()) {
+            return List.of();
+        }
+        String placeholders = String.join(",", java.util.Collections.nCopies(safeIds.size(), "?"));
+        return jdbcTemplate.query(
+                "SELECT u.id, u.username, u.nickname, u.avatar_url, u.role, u.status, "
+                        + "(SELECT COUNT(*) FROM user_follow f WHERE f.anchor_id = u.id) AS follower_count "
+                        + "FROM sys_user u WHERE u.id IN (" + placeholders + ")",
+                (resultSet, rowNum) -> new UserProfile(
+                        resultSet.getLong("id"),
+                        resultSet.getString("username"),
+                        resultSet.getString("nickname"),
+                        resultSet.getString("avatar_url"),
+                        resultSet.getString("role"),
+                        resultSet.getString("status"),
+                        resultSet.getLong("follower_count")),
+                safeIds.toArray());
+    }
+
     public void follow(long userId, long anchorId) {
         jdbcTemplate.update(
                 "INSERT IGNORE INTO user_follow(user_id, anchor_id) VALUES (?, ?)",
@@ -57,6 +83,37 @@ public class UserRepository {
                 userId,
                 anchorId);
         return count != null && count > 0;
+    }
+
+    public PageResult<UserProfile> following(long userId, int page, int pageSize) {
+        int safePage = Math.max(1, page);
+        int safePageSize = Math.max(1, Math.min(pageSize, 100));
+        Long total = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM user_follow f JOIN sys_user u ON u.id = f.anchor_id WHERE f.user_id = ?",
+                Long.class,
+                userId);
+        List<UserProfile> items = jdbcTemplate.query(
+                """
+                SELECT u.id, u.username, u.nickname, u.avatar_url, u.role, u.status,
+                       (SELECT COUNT(*) FROM user_follow f2 WHERE f2.anchor_id = u.id) AS follower_count
+                  FROM user_follow f
+                  JOIN sys_user u ON u.id = f.anchor_id
+                 WHERE f.user_id = ?
+                 ORDER BY f.created_at DESC
+                 LIMIT ? OFFSET ?
+                """,
+                (resultSet, rowNum) -> new UserProfile(
+                        resultSet.getLong("id"),
+                        resultSet.getString("username"),
+                        resultSet.getString("nickname"),
+                        resultSet.getString("avatar_url"),
+                        resultSet.getString("role"),
+                        resultSet.getString("status"),
+                        resultSet.getLong("follower_count")),
+                userId,
+                safePageSize,
+                (safePage - 1) * safePageSize);
+        return PageResult.of(items, safePage, safePageSize, total == null ? 0 : total);
     }
 
     public UserProfile updateProfile(long userId, String nickname, String avatarUrl) {

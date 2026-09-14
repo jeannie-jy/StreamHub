@@ -45,6 +45,7 @@ Authorization: Bearer <accessToken>
 | POST | /api/v1/users/{anchorId}/follow | 是 | 关注主播 |
 | DELETE | /api/v1/users/{anchorId}/follow | 是 | 取消关注 |
 | GET | /api/v1/users/{anchorId}/follow-status | 是 | 查询关注状态 |
+| GET | /api/v1/users/me/following | 是 | 查询当前用户关注的主播 |
 
 ## 直播间和弹幕
 
@@ -56,6 +57,11 @@ Authorization: Bearer <accessToken>
 | POST | /api/v1/live/rooms/{roomId}/start | 是 | 开始直播并返回 SRS 地址 |
 | POST | /api/v1/live/rooms/{roomId}/end | 是 | 结束直播 |
 | GET | /api/v1/live/rooms/{roomId}/messages?afterId=0&limit=50 | 否 | 拉取历史弹幕，limit 最大 100 |
+| GET | /api/v1/live/rooms/following | 是 | 查询关注主播的直播间 |
+| GET | /api/v1/live/rooms/favorites | 是 | 查询当前用户收藏的直播间 |
+| GET | /api/v1/live/rooms/{roomId}/favorite-status | 是 | 查询直播间收藏状态 |
+| POST | /api/v1/live/rooms/{roomId}/favorite | 是 | 收藏直播间 |
+| DELETE | /api/v1/live/rooms/{roomId}/favorite | 是 | 取消收藏直播间 |
 
 创建直播间请求：
 

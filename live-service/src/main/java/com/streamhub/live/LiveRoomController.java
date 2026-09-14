@@ -56,6 +56,43 @@ public class LiveRoomController {
         return ApiResponse.success(liveRoomService.get(roomId));
     }
 
+    @GetMapping("/following")
+    public ApiResponse<PageResult<LiveRoomView>> following(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            HttpServletRequest request) {
+        return ApiResponse.success(liveRoomService.following(RequestUserId.required(request), page, pageSize));
+    }
+
+    @GetMapping("/favorites")
+    public ApiResponse<PageResult<LiveRoomView>> favorites(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            HttpServletRequest request) {
+        return ApiResponse.success(liveRoomService.favorites(RequestUserId.required(request), page, pageSize));
+    }
+
+    @GetMapping("/{roomId}/favorite-status")
+    public ApiResponse<java.util.Map<String, Boolean>> favoriteStatus(
+            @PathVariable long roomId,
+            HttpServletRequest request) {
+        return ApiResponse.success(liveRoomService.favoriteStatus(RequestUserId.required(request), roomId));
+    }
+
+    @PostMapping("/{roomId}/favorite")
+    public ApiResponse<java.util.Map<String, Boolean>> favorite(
+            @PathVariable long roomId,
+            HttpServletRequest request) {
+        return ApiResponse.success(liveRoomService.favorite(RequestUserId.required(request), roomId, true));
+    }
+
+    @org.springframework.web.bind.annotation.DeleteMapping("/{roomId}/favorite")
+    public ApiResponse<java.util.Map<String, Boolean>> unfavorite(
+            @PathVariable long roomId,
+            HttpServletRequest request) {
+        return ApiResponse.success(liveRoomService.favorite(RequestUserId.required(request), roomId, false));
+    }
+
     @GetMapping
     public ApiResponse<PageResult<LiveRoomView>> page(
             @RequestParam(defaultValue = "") String status,
