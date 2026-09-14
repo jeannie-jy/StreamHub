@@ -24,6 +24,10 @@ export interface AuthSession {
   expiresAt: string
 }
 
+export interface FavoriteState {
+  favorite: boolean
+}
+
 export interface UserProfile {
   id: number
   username: string
@@ -57,6 +61,8 @@ export interface ChatMessage {
   id: number
   roomId: number
   userId: number
+  nickname?: string | null
+  avatarUrl?: string | null
   clientMessageId: string
   content: string
   createdAt: string

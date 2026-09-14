@@ -26,6 +26,6 @@ describe('RoomCard', () => {
     expect(wrapper.text()).toContain('夜航电台')
     expect(wrapper.text()).toContain('小溪')
     expect(wrapper.text()).toContain('128 人在线')
-    expect(wrapper.text()).toContain('LIVE')
+    expect(wrapper.text()).toContain('直播中')
   })
 })

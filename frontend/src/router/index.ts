@@ -7,6 +7,7 @@ const router = createRouter({
   routes: [
     { path: '/', name: 'home', component: () => import('@/views/HomeView.vue'), meta: { public: true } },
     { path: '/discover', redirect: '/' },
+    { path: '/following', name: 'following', component: () => import('@/views/FollowingView.vue'), meta: { requiresAuth: true } },
     { path: '/live/:roomId(\\d+)', name: 'room', component: () => import('@/views/RoomView.vue'), meta: { public: true } },
     { path: '/auth/login', name: 'login', component: () => import('@/views/LoginView.vue'), meta: { public: true, authPage: true } },
     { path: '/auth/register', name: 'register', component: () => import('@/views/RegisterView.vue'), meta: { public: true, authPage: true } },

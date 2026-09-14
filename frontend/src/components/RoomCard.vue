@@ -4,15 +4,16 @@ import { NTag } from 'naive-ui'
 import type { LiveRoom } from '@/types/api'
 
 const props = defineProps<{ room: LiveRoom }>()
-const cover = computed(() => props.room.coverUrl || `https://images.unsplash.com/photo-${['1516321318423-f06f85e504b3', '1492684223066-81342ee5ff30', '1531058020387-3be344556be6', '1519389950473-47ba0277781c'][props.room.id % 4]}?auto=format&fit=crop&w=900&q=80`)
+const hasCover = computed(() => Boolean(props.room.coverUrl))
 </script>
 
 <template>
   <RouterLink :to="`/live/${room.id}`" class="room-card surface">
-    <div class="room-cover" :style="{ backgroundImage: `url(${cover})` }">
+    <div class="room-cover" :class="{ 'room-cover-placeholder': !hasCover }" :style="hasCover ? { backgroundImage: `url(${room.coverUrl})` } : undefined">
       <div class="cover-gradient" />
-      <NTag v-if="room.status === 'LIVE'" size="small" type="error" round class="live-tag">LIVE</NTag>
-      <span class="room-online">● {{ room.onlineCount || 0 }} 人在线</span>
+      <span v-if="!hasCover" class="placeholder-label">STREAMHUB</span>
+      <NTag v-if="room.status === 'LIVE'" size="small" type="success" round class="live-tag">直播中</NTag>
+      <span class="room-online"><span class="online-dot" /> {{ room.onlineCount || 0 }} 人在线</span>
     </div>
     <div class="room-card-body">
       <h3>{{ room.title }}</h3>
@@ -26,17 +27,19 @@ const cover = computed(() => props.room.coverUrl || `https://images.unsplash.com
 </template>
 
 <style scoped>
-.room-card { display: block; overflow: hidden; transition: transform .24s ease, border-color .24s ease; }
-.room-card:hover { transform: translateY(-5px); border-color: rgba(139, 124, 255, .55); }
+.room-card { display: block; overflow: hidden; transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease; }
+.room-card:hover { transform: translateY(-3px); border-color: var(--sh-primary); box-shadow: 0 18px 42px rgba(31, 36, 33, .12); }
 .room-cover { position: relative; height: 170px; background-position: center; background-size: cover; }
-.cover-gradient { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,.08), rgba(0,0,0,.7)); }
+.room-cover-placeholder { display: grid; place-items: center; color: rgba(255, 255, 255, .8); background: linear-gradient(135deg, #244b3c, #88a895); }
+.cover-gradient { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0, 0, 0, .04), rgba(0, 0, 0, .62)); }
+.placeholder-label { position: relative; font-size: 11px; font-weight: 800; letter-spacing: .2em; }
 .live-tag { position: absolute; top: 12px; left: 12px; }
-.room-online { position: absolute; right: 12px; bottom: 11px; color: rgba(255,255,255,.84); font-size: 12px; }
-.room-online::first-letter { color: #ff6f91; }
+.room-online { position: absolute; right: 12px; bottom: 11px; display: inline-flex; align-items: center; gap: 6px; color: #fff; font-size: 12px; }
+.online-dot { width: 6px; height: 6px; border-radius: 50%; background: #9be0b5; }
 .room-card-body { padding: 15px 16px 17px; }
-.room-card h3 { overflow: hidden; margin: 0 0 13px; font-size: 15px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.room-card h3 { overflow: hidden; margin: 0 0 13px; color: var(--sh-ink); font-size: 15px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .room-meta { display: flex; align-items: center; gap: 8px; color: var(--sh-muted); font-size: 12px; }
-.room-avatar { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; color: white; background: linear-gradient(135deg,#f89ab6,#816fff); }
+.room-avatar { display: grid; place-items: center; width: 24px; height: 24px; border: 1px solid var(--sh-border-strong); border-radius: 50%; color: var(--sh-primary-strong); background: var(--sh-primary-soft); }
 .room-anchor { overflow: hidden; max-width: 110px; text-overflow: ellipsis; white-space: nowrap; }
-.room-category { margin-left: auto; padding: 4px 8px; border-radius: 6px; background: rgba(255,255,255,.06); }
+.room-category { margin-left: auto; padding: 4px 8px; border-radius: 6px; background: var(--sh-surface-muted); }
 </style>

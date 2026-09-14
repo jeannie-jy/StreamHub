@@ -9,15 +9,21 @@ export const useAuthStore = defineStore('auth', () => {
   const profile = ref<UserProfile | null>(null)
   const loading = ref(false)
   const hydrated = ref(false)
+  let hydratePromise: Promise<void> | null = null
 
-  const isAuthenticated = computed(() => Boolean(getAccessToken() && session.value))
+  // `accessToken` lives outside Vue's reactivity system. Reading it first made
+  // this computed value cache `false` forever when the app initially rendered
+  // as a guest, because the short circuit never tracked `session.value`.
+  // The session is populated and cleared together with the in-memory token, so
+  // it is the reactive source of truth for the UI and router guards.
+  const isAuthenticated = computed(() => Boolean(session.value?.accessToken))
   const isOperator = computed(() => ['OPERATOR', 'ADMIN'].includes(profile.value?.role || session.value?.role || ''))
   const userId = computed(() => session.value?.userId || 0)
 
   async function login(credentials: { username: string; password: string }) {
     loading.value = true
     try {
-      const next = await authApi.login(credentials)
+      const next = await authApi.login({ username: credentials.username.trim(), password: credentials.password })
       applySession(next)
       await loadProfile()
       return next
@@ -29,7 +35,7 @@ export const useAuthStore = defineStore('auth', () => {
   async function register(body: { username: string; nickname: string; password: string }) {
     loading.value = true
     try {
-      const next = await authApi.register(body)
+      const next = await authApi.register({ username: body.username.trim(), nickname: body.nickname.trim(), password: body.password })
       applySession(next)
       await loadProfile()
       return next
@@ -42,7 +48,6 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const next = await authApi.refresh()
       applySession(next)
-      await loadProfile()
       return true
     } catch {
       clearSession()
@@ -52,8 +57,14 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function hydrate() {
     if (hydrated.value) return
-    hydrated.value = true
-    await refresh()
+    if (hydratePromise) return hydratePromise
+    hydratePromise = (async () => {
+      if (await refresh()) await loadProfile()
+      hydrated.value = true
+    })().finally(() => {
+      hydratePromise = null
+    })
+    await hydratePromise
   }
 
   async function logout() {
@@ -75,10 +86,13 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function loadProfile() {
+    if (!session.value?.userId) return null
     try {
-      if (session.value?.userId) setProfile(await userApi.profile(session.value.userId))
+      const next = await userApi.profile(session.value.userId)
+      setProfile(next)
+      return next
     } catch {
-      // The access token remains usable when profile enrichment is temporarily unavailable.
+      return null
     }
   }
 
@@ -90,5 +104,5 @@ export const useAuthStore = defineStore('auth', () => {
 
   setRefreshHandler(refresh)
 
-  return { session, profile, loading, hydrated, isAuthenticated, isOperator, userId, login, register, refresh, hydrate, logout, setProfile, clearSession }
+  return { session, profile, loading, hydrated, isAuthenticated, isOperator, userId, login, register, refresh, hydrate, logout, setProfile, clearSession, loadProfile }
 })

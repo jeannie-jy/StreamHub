@@ -3,4 +3,4 @@
 <script setup lang="ts">
 import { NButton } from 'naive-ui'
 </script>
-<style scoped>.not-found { display: grid; min-height: 70vh; place-items: center; align-content: center; gap: 14px; text-align: center; } .not-found-code { color: #968bff; font-size: 110px; font-weight: 900; letter-spacing: -.1em; line-height: 1; }</style>
+<style scoped>.not-found { display: grid; min-height: 70vh; place-items: center; align-content: center; gap: 14px; text-align: center; } .not-found-code { color: var(--sh-primary); font-size: 110px; font-weight: 900; letter-spacing: -.1em; line-height: 1; }</style>

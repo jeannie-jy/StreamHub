@@ -15,36 +15,38 @@ import type {
   SensitiveWord,
   AuditLog,
   UserProfile,
+  FavoriteState,
   Wallet,
   WsTicket,
 } from '@/types/api'
 
 export const authApi = {
   register: (body: { username: string; nickname: string; password: string }) =>
-    request<AuthSession>({ method: 'POST', url: '/v1/auth/register', data: body }),
+    request<AuthSession>({ method: 'POST', url: '/v1/auth/register', data: body, skipAuthRefresh: true }),
   login: (body: { username: string; password: string }) =>
-    request<AuthSession>({ method: 'POST', url: '/v1/auth/login', data: body }),
-  refresh: () => request<AuthSession>({ method: 'POST', url: '/v1/auth/refresh' }),
-  logout: () => request<void>({ method: 'POST', url: '/v1/auth/logout' }),
+    request<AuthSession>({ method: 'POST', url: '/v1/auth/login', data: body, skipAuthRefresh: true }),
+  refresh: () => request<AuthSession>({ method: 'POST', url: '/v1/auth/refresh', skipAuthRefresh: true }),
+  logout: () => request<void>({ method: 'POST', url: '/v1/auth/logout', skipAuthRefresh: true }),
   me: () => request<AuthSession>({ method: 'GET', url: '/v1/auth/me' }),
   wsTicket: () => request<WsTicket>({ method: 'POST', url: '/v1/auth/ws-ticket' }),
 }
 
 export const userApi = {
-  profile: (userId: number) => request<UserProfile>({ method: 'GET', url: `/v1/users/${userId}` }),
+  profile: (userId: number) => request<UserProfile>({ method: 'GET', url: `/v1/users/${userId}`, skipAuthRefresh: true }),
   updateMe: (body: { nickname: string; avatarUrl?: string | null }) =>
     request<UserProfile>({ method: 'PUT', url: '/v1/users/me', data: body }),
   follow: (anchorId: number) => request<{ following: boolean }>({ method: 'POST', url: `/v1/users/${anchorId}/follow` }),
   unfollow: (anchorId: number) => request<{ following: boolean }>({ method: 'DELETE', url: `/v1/users/${anchorId}/follow` }),
   followStatus: (anchorId: number) => request<{ following: boolean }>({ method: 'GET', url: `/v1/users/${anchorId}/follow-status` }),
+  following: (params: { page?: number; pageSize?: number } = {}) => request<PageResult<UserProfile>>({ method: 'GET', url: '/v1/users/me/following', params }),
 }
 
 export const liveApi = {
   rooms: (params: { page?: number; pageSize?: number; status?: string; category?: string; keyword?: string } = {}) =>
-    request<PageResult<LiveRoom>>({ method: 'GET', url: '/v1/live/rooms', params }),
+    request<PageResult<LiveRoom>>({ method: 'GET', url: '/v1/live/rooms', params, skipAuthRefresh: true }),
   mine: (params: { page?: number; pageSize?: number } = {}) =>
     request<PageResult<LiveRoom>>({ method: 'GET', url: '/v1/live/rooms/mine', params }),
-  room: (roomId: number) => request<LiveRoom>({ method: 'GET', url: `/v1/live/rooms/${roomId}` }),
+  room: (roomId: number) => request<LiveRoom>({ method: 'GET', url: `/v1/live/rooms/${roomId}`, skipAuthRefresh: true }),
   createRoom: (body: { title: string; category: string; coverUrl?: string | null }) =>
     request<LiveRoom>({ method: 'POST', url: '/v1/live/rooms', data: body }),
   updateRoom: (roomId: number, body: { title: string; category: string; coverUrl?: string | null }) =>
@@ -52,13 +54,18 @@ export const liveApi = {
   startRoom: (roomId: number) => request<LiveRoom>({ method: 'POST', url: `/v1/live/rooms/${roomId}/start` }),
   endRoom: (roomId: number) => request<LiveRoom>({ method: 'POST', url: `/v1/live/rooms/${roomId}/end` }),
   messages: (roomId: number, afterId = 0, limit = 50) =>
-    request<ChatMessage[]>({ method: 'GET', url: `/v1/live/rooms/${roomId}/messages`, params: { afterId, limit } }),
-  activities: (roomId: number) => request<Activity[]>({ method: 'GET', url: `/v1/live/rooms/${roomId}/activities` }),
+    request<ChatMessage[]>({ method: 'GET', url: `/v1/live/rooms/${roomId}/messages`, params: { afterId, limit }, skipAuthRefresh: true }),
+  activities: (roomId: number) => request<Activity[]>({ method: 'GET', url: `/v1/live/rooms/${roomId}/activities`, skipAuthRefresh: true }),
   dashboard: (roomId: number) => request<RoomDashboard>({ method: 'GET', url: `/v1/live/rooms/${roomId}/dashboard` }),
+  following: (params: { page?: number; pageSize?: number } = {}) => request<PageResult<LiveRoom>>({ method: 'GET', url: '/v1/live/rooms/following', params }),
+  favorites: (params: { page?: number; pageSize?: number } = {}) => request<PageResult<LiveRoom>>({ method: 'GET', url: '/v1/live/rooms/favorites', params }),
+  favoriteStatus: (roomId: number) => request<FavoriteState>({ method: 'GET', url: `/v1/live/rooms/${roomId}/favorite-status` }),
+  favorite: (roomId: number) => request<FavoriteState>({ method: 'POST', url: `/v1/live/rooms/${roomId}/favorite` }),
+  unfavorite: (roomId: number) => request<FavoriteState>({ method: 'DELETE', url: `/v1/live/rooms/${roomId}/favorite` }),
 }
 
 export const giftApi = {
-  catalog: () => request<GiftCatalog[]>({ method: 'GET', url: '/v1/gifts' }),
+  catalog: () => request<GiftCatalog[]>({ method: 'GET', url: '/v1/gifts', skipAuthRefresh: true }),
   wallet: () => request<Wallet>({ method: 'GET', url: '/v1/wallet' }),
   recharge: (body: { bizNo: string; amount: number }) => request<Wallet>({ method: 'POST', url: '/v1/wallet/recharge', data: body }),
   send: (roomId: number, body: { giftCode: string; quantity: number; clientOrderNo: string }) =>

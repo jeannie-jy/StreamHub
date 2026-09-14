@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
+import { setAccessToken } from '@/api/client'
 import { useAuthStore } from './auth'
 
 vi.mock('@/api', () => ({
@@ -15,11 +16,17 @@ vi.mock('@/api', () => ({
 }))
 
 describe('auth store', () => {
-  beforeEach(() => setActivePinia(createPinia()))
+  beforeEach(() => {
+    setAccessToken(null)
+    setActivePinia(createPinia())
+  })
 
-  it('keeps the access token in memory and hydrates the profile', async () => {
+  it('reacts when a guest logs in and hydrates the profile', async () => {
     const auth = useAuthStore()
+    expect(auth.isAuthenticated).toBe(false)
+
     await auth.login({ username: 'viewer', password: 'password123' })
+
     expect(auth.isAuthenticated).toBe(true)
     expect(auth.profile?.nickname).toBe('观众')
     expect(auth.isOperator).toBe(false)

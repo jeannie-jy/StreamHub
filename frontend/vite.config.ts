@@ -28,7 +28,7 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           ws: true,
         },
-        '/live': {
+        '^/live/.+\\.flv$': {
           target: mediaTarget,
           changeOrigin: true,
         },

@@ -12,6 +12,8 @@ let accessToken: string | null = null
 let refreshHandler: (() => Promise<boolean>) | null = null
 let refreshPromise: Promise<boolean> | null = null
 
+export type RequestConfig = AxiosRequestConfig & { skipAuthRefresh?: boolean; _retry?: boolean }
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -46,9 +48,9 @@ http.interceptors.request.use((config) => {
 http.interceptors.response.use(
   (response) => response,
   async (error: AxiosError<ApiResponse<unknown>>) => {
-    const original = error.config as (AxiosRequestConfig & { _retry?: boolean }) | undefined
+    const original = error.config as RequestConfig | undefined
     const status = error.response?.status
-    const shouldRefresh = status === 401 && original && !original._retry && !String(original.url).includes('/v1/auth/refresh')
+    const shouldRefresh = status === 401 && original && !original._retry && !original.skipAuthRefresh && !String(original.url).includes('/v1/auth/refresh')
     if (shouldRefresh && refreshHandler) {
       original._retry = true
       refreshPromise ??= refreshHandler().finally(() => {
@@ -62,7 +64,7 @@ http.interceptors.response.use(
   },
 )
 
-export async function request<T>(config: AxiosRequestConfig): Promise<T> {
+export async function request<T>(config: RequestConfig): Promise<T> {
   try {
     const response = await http.request<ApiResponse<T>>(config)
     const payload = response.data
