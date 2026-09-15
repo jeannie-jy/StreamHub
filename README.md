@@ -1,188 +1,318 @@
 # StreamHub
 
-基于 Spring Boot 微服务架构的高并发直播互动与虚拟礼物平台。
+StreamHub 是一个面向高并发场景的直播互动与虚拟礼物平台，采用 Spring Boot 微服务架构实现用户、认证、直播间、弹幕、礼物、钱包和活动等业务能力。
 
-项目计划见 [PLAN.md](PLAN.md)。当前已完成 Phase 0、Phase 1、Phase 2、Phase 3 和 Phase 4，Phase 5 已加入监控、压测脚本和工程化文档。前端产品化页面、认证恢复、直播互动、关注收藏和运营治理接口均已接入。
+项目的核心设计是将“音视频媒体面”和“业务互动面”拆开：SRS 负责推流与播放，Java 服务负责控制面、实时互动和交易业务。项目重点覆盖了多节点 WebSocket 广播、虚拟礼物幂等、秒杀削峰、故障补偿和可观测性等面试中常见的分布式系统问题。
+## 一、项目描述
 
-## 当前产品能力
+### 1. 产品能力
 
-- 游客可以浏览公开直播、房间信息、历史弹幕和礼物目录。
-- 用户可以注册、登录、刷新会话、退出登录，并在刷新页面后恢复登录状态。
-- 登录用户可以发送弹幕、关注主播、收藏直播间、送礼、参与活动和管理订单。
-- 主播可以创建直播间、开始或结束直播、复制推流地址和管理房间活动。
-- 播放器优先使用 WebRTC，信令失败或浏览器不支持时回退到 HTTP-FLV，并支持手动播放、重试和卸载清理。
-- 个人中心和关注内容页提供关注主播、关注直播间、收藏直播间和订单查询。
-- 前端采用暖白内容社区风格，图标统一使用 SVG、CSS 图形或文字，源码、页面文案和测试数据不使用 emoji。
+- 游客浏览直播间、查看历史弹幕和礼物目录。
+- 用户注册、登录、刷新会话、退出登录和个人资料维护。
+- 主播创建、开始、结束直播，并管理房间活动。
+- 用户发送弹幕、关注主播、收藏直播间、送虚拟礼物和查询订单。
+- 支持贡献榜、主播收益榜、在线人数和运营治理能力。
+- 支持秒杀活动：活动启动时预热库存，用户一人一单，订单异步处理并支持超时关闭。
+- 播放器优先使用 WebRTC，浏览器不支持或信令失败时回退到 HTTP-FLV。
 
-关注与收藏接口、认证约定和完整 API 列表见 [docs/api.md](docs/api.md)。数据库迁移包含 `V6__social_relationships.sql`。
+### 2. 系统架构
 
-## 本地启动
+~~~text
+                    ┌──────────────┐
+       RTMP 推流 ──>│     SRS      │──> WebRTC / HTTP-FLV / HLS 播放
+                    └──────────────┘
 
-环境要求：Java 17+、Maven 3.9+、Docker Desktop。
+浏览器 HTTP ───────> API Gateway:8088 ───> Auth / User / Live
+浏览器 WebSocket ──> Realtime Gateway:8090 ──> Live WebSocket
+                                             │
+                         ┌───────────────────┼───────────────────┐
+                         │                   │                   │
+                       MySQL              Redis             RocketMQ
+                 业务事实、流水、历史    热点状态、库存、榜单    异步订单、削峰、重试
+                                             │
+                                      Redis Pub/Sub
+                                      跨节点实时广播
+~~~
 
-```powershell
+### 3. 服务职责
+
+| 模块 | 默认端口 | 职责 |
+| --- | ---: | --- |
+| auth-service | 8081 | 注册、登录、Opaque Token 会话、Token 校验、WebSocket Ticket |
+| user-service | 8082 | 用户资料、关注关系、用户状态 |
+| live-service | 8083 | 直播间、弹幕、在线状态、礼物、钱包、活动和运营接口 |
+| gateway-service | 8088 | HTTP 路由、服务发现、统一 Token 鉴权和负载均衡 |
+| realtime-gateway | 8090 | WebSocket 长连接接入、鉴权和转发 |
+| frontend | 8089 | Vue 单页应用和 Nginx 反向代理 |
+| SRS | 1935/1985/8080 | RTMP 推流、WebRTC/HTTP-FLV/HLS 播放和媒体管理 |
+
+### 4. 项目结构
+
+~~~text
+StreamHub/
+├── auth-service/              # 认证与会话
+├── user-service/              # 用户与关注关系
+├── live-service/              # 直播互动、礼物、钱包、活动
+├── gateway-service/           # HTTP API Gateway
+├── realtime-gateway/          # WebSocket Gateway
+├── streamhub-common/          # 公共响应、异常、TraceId 等
+├── streamhub-gateway-support/ # 网关鉴权和客户端配置
+├── database-migrations/       # Flyway 数据库迁移
+├── frontend/                  # Vue 3 前端
+├── infra/                     # RocketMQ、Prometheus、Grafana 配置
+├── load-tests/                # k6 压测脚本
+└── docs/                      # 架构、时序、一致性和面试资料
+~~~
+## 二、所用技术
+
+| 技术方向 | 技术选型 | 使用场景 |
+| --- | --- | --- |
+| 后端基础 | Java 17、Spring Boot 3.4.5 | 微服务业务开发和运行 |
+| 微服务治理 | Spring Cloud 2024.0.2、Spring Cloud Alibaba、Nacos 2.4.3 | 服务注册发现、配置管理和负载均衡 |
+| 网关 | Spring Cloud Gateway | HTTP 路由、统一鉴权和请求转发 |
+| 服务间调用 | OpenFeign、Spring Cloud LoadBalancer | Live 服务校验用户、服务间访问 |
+| 实时通信 | Spring WebSocket、WebSocket Gateway | 弹幕、礼物和活动事件实时下发 |
+| 数据库 | MySQL 8.4、Spring JDBC、HikariCP | 业务事实、订单、钱包流水和历史消息 |
+| 数据库变更 | Flyway | 按版本执行数据库迁移，当前包含 V1 至 V6 |
+| 缓存与高并发 | Redis 7.4、Redis Lua、ZSet、Pub/Sub | 在线状态、榜单、库存、限流和跨节点广播 |
+| 异步消息 | Apache RocketMQ 5.3.1 | 礼物/活动订单异步处理、重试和延迟关闭 |
+| 音视频 | SRS 6、RTMP、WebRTC、HTTP-FLV、HLS | 推流、播放和 WebRTC 信令 |
+| 前端 | Vue 3、TypeScript、Vite 6、Vue Router、Pinia | 页面、路由和状态管理 |
+| 前端组件与播放 | Naive UI、mpegts.js、VueUse、vue-i18n | UI、HTTP-FLV 播放、交互和多语言 |
+| 工程化 | Docker、Docker Compose、Nginx | 一键编排、镜像构建和前端反向代理 |
+| 监控与测试 | Actuator、Micrometer、Prometheus、Grafana、JUnit、Vitest、Playwright、k6 | 指标、面板、单元测试、E2E 和压测 |
+## 三、亮点与难点
+
+### 1. 音视频面与业务面分离
+
+视频流量的主要压力在媒体服务器、CDN 和边缘节点，不应该让 Java 业务服务承担视频分发。项目让 SRS 处理 RTMP 推流和媒体播放，Java 服务只处理直播间控制、弹幕和交易业务；API Gateway 和 Realtime Gateway 也分别承载 HTTP 请求与 WebSocket 长连接，便于独立扩容和故障隔离。
+
+面试时需要明确：项目中的“高并发”主要对应互动连接、业务请求和交易链路，不能直接把业务 QPS 等同于视频观看规模。
+
+### 2. 多节点弹幕广播与断线补偿
+
+WebSocket 连接只保存在当前 Live 节点的内存注册表中。弹幕处理流程如下：
+
+1. 客户端发送弹幕后，Live 节点先写入 MySQL chat_message。
+2. 数据落库成功后，通过 Redis Pub/Sub 发布包含 eventId 和 sourceNodeId 的房间事件。
+3. 每个 Live 节点订阅事件，只向自己持有的 WebSocket 连接广播，因此可以横向扩容。
+4. Redis Pub/Sub 只负责在线广播，不承担历史存储；客户端重连后通过 afterId 从 MySQL 补偿遗漏弹幕。
+
+这样即使实时广播失败，已经落库的弹幕仍然可查询；当房间广播速率触顶时，也只是丢弃实时广播，不丢失历史记录。
+
+### 3. 虚拟礼物的幂等与最终一致性
+
+送礼接口不会同步完成扣款，而是先创建 PENDING 订单并投递 RocketMQ，消费者再执行扣款、收益入账、榜单更新和事件广播。
+
+幂等边界分为三层：
+
+- API 层通过客户端 clientOrderNo 防止重复创建订单。
+- 钱包流水使用唯一业务号，重复消费时直接返回已有流水结果，避免重复扣款。
+- MySQL 订单、钱包余额和收益流水构成可追溯的业务事实；Redis 榜单和 WebSocket 动画属于成功订单的派生结果，可重建。
+
+面试回答重点是：RocketMQ 提供异步化、削峰和重试，但不会自动提供 Redis 与 MySQL 之间的分布式事务，因此必须依赖唯一约束、状态机和对账补偿。
+
+### 4. 秒杀的原子预扣与异步削峰
+
+秒杀请求在入口只做轻量鉴权，然后使用 Redis Lua 脚本在一次原子操作中完成：活动状态校验、库存扣减和一人一单校验。预扣成功后发送 CREATE 消息，接口立即返回 PENDING，由 RocketMQ 消费者异步创建 MySQL 订单。
+
+订单流程还包含：
+
+- MySQL 唯一索引防止重复消息导致重复订单。
+- RocketMQ 延迟消息发送 CLOSE，关闭超时订单并回补库存。
+- 定时对账任务比较 Redis 库存、用户占位和 MySQL 订单状态，修复异常数据。
+- 对账任务使用 Redis 锁在多实例之间选出一个执行者，避免重复修复。
+
+验证是否超卖时，不能只看接口返回值，还要同时核对 Redis 剩余库存、成功订单数量和成功用户集合，确保库存不为负且每个用户最多一笔成功订单。
+
+### 5. Token 鉴权与 WebSocket Ticket
+
+HTTP 写接口统一经过 API Gateway，并使用 Authorization: Bearer <accessToken>。Gateway 调用 Auth 服务进行 Token introspection 后，覆盖客户端传入的用户身份，避免信任外部伪造的 X-User-Id。
+
+WebSocket 连接先通过 /api/v1/auth/ws-ticket 获取短时有效的一次性 Ticket，再连接 Realtime Gateway。Ticket 被消费后才把可信用户 ID 注入 Live 服务，解决长连接场景下 Token 传递、复用和身份伪造问题。
+
+### 6. 可观测性与故障边界
+
+所有服务通过 Actuator 暴露健康检查和 Prometheus 指标，统一响应中携带 traceId，便于从网关日志追踪到业务服务。Live 服务额外记录实时广播发布数、丢弃数和本地降级数。
+
+项目对组件职责进行了明确划分：
+
+| 组件 | 负责什么 | 不负责什么 |
+| --- | --- | --- |
+| MySQL | 订单、钱包、流水、历史消息等最终业务事实 | 高并发实时广播 |
+| Redis | 热点状态、库存、榜单、限流和在线广播 | 可靠历史消息和最终账务 |
+| RocketMQ | 异步削峰、重试和延迟任务 | 自动解决跨存储分布式事务 |
+| Redis Pub/Sub | 在线实时广播 | 断线消息可靠投递 |
+
+常见面试追问：
+
+| 追问 | 回答要点 |
+| --- | --- |
+| 为什么 WebSocket 不直接连接 Live 服务？ | 独立网关可以单独扩容连接层，集中处理鉴权和入口治理，业务节点只处理房间事件。 |
+| Redis 挂了会怎样？ | 在线状态和实时广播受影响；已落 MySQL 的弹幕可通过历史接口补偿，秒杀预扣失败则返回错误。 |
+| MQ 重复投递怎么办？ | 订单号、钱包流水业务号和 MySQL 唯一索引共同构成幂等边界。 |
+| 如何防止秒杀超卖？ | Redis Lua 原子预扣负责入口并发控制，MySQL 唯一索引负责最终落库，后台对账负责修复异常。 |
+| 如何定位慢请求？ | 用 traceId 关联网关与服务日志，结合 Actuator/Prometheus 的 p95、JVM、连接池、Redis、MQ 和慢 SQL 指标。 |
+| 能否直接宣称百万并发？ | 不能。需要区分 CDN 观看规模、WebSocket 连接数、业务 QPS、实例数量和实际压测条件。 |
+## 四、快速开始
+
+### 1. 环境要求
+
+- Docker Desktop，建议开启 Docker Compose。
+- Java 17+
+- Maven 3.9+（仅本地启动 Java 服务或执行 Maven 校验时需要）。
+- Node.js 22+ 和 npm（仅前端本地开发时需要）。
+
+### 2. 使用 Docker Compose 一键启动
+
+在项目根目录执行：
+
+~~~powershell
+Copy-Item .env.example .env
 docker compose up -d --build
-```
+~~~
 
-`docker compose up -d --build` 会构建并启动基础设施、五个 Java 微服务和最新 Web 容器，Web 默认入口为 `http://localhost:8089`。业务服务在 MySQL、Redis 和 Nacos 健康后启动，Web 则在两个网关健康后启动；容器间统一使用 Compose 服务名通信，不依赖容易因宿主机网络变化而失效的局域网地址。
+Compose 会启动 MySQL、Redis、RocketMQ、Nacos、SRS、五个 Java 服务、前端、Prometheus 和 Grafana。首次启动需要构建镜像并下载 Maven/npm 依赖，耗时可能较长。
 
-使用 `docker compose ps` 检查所有服务状态；首次构建需要下载 Maven 与 npm 依赖，耗时会较长。若页面提示“服务正在启动或暂时不可用”，可用 `docker compose logs -f gateway-service live-service` 查看上游启动日志。
+检查容器状态：
 
-仅修改前端后，可以使用以下命令更新 8089 上的页面：
+~~~powershell
+docker compose ps
+~~~
 
-```powershell
-docker compose up -d --build web
-```
+查看业务服务日志：
 
-如果浏览器仍显示旧样式，请执行强制刷新。前端资源文件使用内容哈希，容器重建后会引用新的资源地址。
+~~~powershell
+docker compose logs -f gateway-service live-service realtime-gateway
+~~~
 
-前端开发和检查：
+启动完成后访问：
 
-```powershell
+| 地址 | 用途 |
+| --- | --- |
+| http://localhost:8089 | 前端页面 |
+| http://localhost:8088 | API Gateway |
+| http://localhost:8848/nacos | Nacos 控制台 |
+| http://localhost:9090 | Prometheus |
+| http://localhost:3000 | Grafana，默认账号 admin，密码 streamhub-admin |
+| localhost:13306 | MySQL 宿主机端口 |
+| localhost:6379 | Redis |
+| localhost:9876 | RocketMQ NameServer |
+| localhost:1935 | SRS RTMP 推流端口 |
+
+端口和本地凭据可在 .env 中覆盖，完整示例见 [.env.example](.env.example)。数据库迁移会在业务服务启动时由 Flyway 自动执行。
+
+### 3. 快速验证服务
+
+~~~powershell
+Invoke-RestMethod http://localhost:8088/api/v1/auth/ping
+Invoke-RestMethod http://localhost:8088/api/v1/users/ping
+Invoke-RestMethod http://localhost:8088/api/v1/live/ping
+Invoke-RestMethod http://localhost:8088/api/v1/gifts
+~~~
+
+注册并登录一个测试用户：
+
+~~~powershell
+$body = @{ username = 'demo001'; nickname = 'Demo'; password = 'password123' } | ConvertTo-Json
+$login = Invoke-RestMethod http://localhost:8088/api/v1/auth/register -Method Post -ContentType 'application/json' -Body $body
+$token = $login.data.accessToken
+$headers = @{ Authorization = "Bearer $token" }
+~~~
+
+创建并开始直播间：
+
+~~~powershell
+$roomBody = @{ title = 'StreamHub Demo'; category = 'tech' } | ConvertTo-Json
+$room = Invoke-RestMethod http://localhost:8088/api/v1/live/rooms -Method Post -Headers $headers -ContentType 'application/json' -Body $roomBody
+$roomId = $room.data.id
+Invoke-RestMethod "http://localhost:8088/api/v1/live/rooms/$roomId/start" -Method Post -Headers $headers
+~~~
+
+开播响应会返回推流地址和播放地址。可以使用 OBS 向返回的 pushUrl 推流，再通过前端页面观看；前端默认优先尝试 WebRTC，失败后回退到 HTTP-FLV。
+
+### 4. 本地开发模式
+
+如果需要调试 Java 或前端代码，可以只用 Docker 启动基础设施：
+
+~~~powershell
+docker compose up -d mysql redis rocketmq-namesrv rocketmq-broker nacos srs
+~~~
+
+在五个终端分别启动服务：
+
+~~~powershell
+mvn -pl auth-service spring-boot:run
+mvn -pl user-service spring-boot:run
+mvn -pl live-service spring-boot:run
+mvn -pl gateway-service spring-boot:run
+mvn -pl realtime-gateway spring-boot:run
+~~~
+
+再启动前端：
+
+~~~powershell
 cd frontend
 npm ci
 npm run dev
-npm run typecheck
-npm run lint
-npm test
-npm run test:e2e
-npm run build
-```
+~~~
 
-推荐在提交前执行完整检查：
+前端开发地址默认为 http://localhost:5173，Vite 会将 /api、/ws、/live 和 /rtc 代理到本机的网关或 SRS 端口。可通过 VITE_DEV_API_TARGET、VITE_DEV_REALTIME_TARGET、VITE_DEV_MEDIA_TARGET 和 VITE_DEV_RTC_TARGET 覆盖代理地址。
 
-```powershell
+### 5. 测试与构建
+
+前端检查：
+
+~~~powershell
 cd frontend
 npm run typecheck
 npm run lint
 npm run test
 npm run test:e2e
 npm run build
+~~~
+
+后端和全工程校验：
+
+~~~powershell
 cd ..
 mvn -B verify
-```
+~~~
 
-不使用 Docker 运行 Java 服务时，先启动 Compose 基础设施，再在不同终端启动五个服务：
+### 6. 停止服务
 
-```powershell
-mvn -pl auth-service spring-boot:run
-mvn -pl user-service spring-boot:run
-mvn -pl live-service spring-boot:run
-mvn -pl gateway-service spring-boot:run
-mvn -pl realtime-gateway spring-boot:run
-```
+~~~powershell
+docker compose down
+~~~
 
-前端开发服务器默认代理到宿主机 `8088` 和 `8090`。若只想使用宿主机 Java 服务配合容器 Web，可覆盖 `API_UPSTREAM` 和 `REALTIME_UPSTREAM` 后单独构建 Web；默认完整 Compose 模式使用 `gateway-service:8088` 与 `realtime-gateway:8090`。
+Compose 使用命名卷持久化 MySQL、Redis、RocketMQ、Nacos、MinIO、Prometheus 和 Grafana 数据。需要清理数据时再执行 docker compose down -v，该操作会删除这些命名卷中的本地数据。
+## 五、接口与文档
 
-网关默认监听 `8088`，通过 Nacos 发现三个业务服务。统一入口示例：
+- [完整 API 说明](docs/api.md)：认证、用户、直播间、弹幕、礼物、钱包和活动接口。
+- [架构说明](docs/architecture.md)：服务职责、媒体边界、Redis Key 和监控指标。
+- [关键时序图](docs/sequences.md)：弹幕、虚拟礼物和秒杀链路。
+- [一致性与幂等](docs/consistency.md)：订单状态、库存、流水和补偿策略。
+- [面试讲解提纲](docs/interview-guide.md)：一分钟介绍、核心亮点和常见追问。
+- [故障演练](docs/fault-drills.md)：Redis、RocketMQ、Live 节点和对账任务的演练方式。
+- [性能基线](docs/performance-baseline.md)：压测与故障演练结果记录。
+- [k6 压测说明](load-tests/README.md)：秒杀和 WebSocket 压测命令。
 
-```powershell
-Invoke-RestMethod http://localhost:8088/api/v1/auth/ping
-Invoke-RestMethod http://localhost:8088/api/v1/users/ping
-Invoke-RestMethod http://localhost:8088/api/v1/live/ping
-Invoke-RestMethod http://localhost:8088/api/v1/gifts
-```
+经过 API Gateway 的用户请求使用：
 
-基础检查接口：
+~~~text
+Authorization: Bearer <accessToken>
+~~~
 
-- `GET http://localhost:8081/api/v1/auth/ping`
-- `GET http://localhost:8082/api/v1/users/ping`
-- `GET http://localhost:8083/api/v1/live/ping`
-- `GET http://localhost:8083/actuator/health`
+WebSocket 客户端先调用 /api/v1/auth/ws-ticket 获取一次性 Ticket，再连接：
 
-默认端口和本地凭据可通过环境变量覆盖，示例见 [.env.example](.env.example)。StreamHub 的 MySQL 容器默认发布到宿主机 `13306`，避免与本机已有的 MySQL 服务冲突；Java 服务会使用同一默认端口。
+~~~text
+ws://localhost:8090/ws/chat?roomId=<roomId>&ticket=<ticket>
+~~~
 
-## Phase 1 MVP 示例
+断线重连后使用以下接口补偿历史弹幕：
 
-注册并登录：
+~~~text
+GET /api/v1/live/rooms/<roomId>/messages?afterId=<lastMessageId>&limit=100
+~~~
 
-```powershell
-$body = @{ username = 'demo001'; nickname = 'Demo'; password = 'password123' } | ConvertTo-Json
-$registered = Invoke-RestMethod http://localhost:8088/api/v1/auth/register -Method Post -ContentType 'application/json' -Body $body
-$token = $registered.data.accessToken
-$headers = @{ Authorization = "Bearer $token" }
-```
-
-创建并开始直播间：
-
-```powershell
-$roomBody = @{ title = 'Demo Room'; category = 'tech' } | ConvertTo-Json
-$room = Invoke-RestMethod http://localhost:8088/api/v1/live/rooms -Method Post -Headers $headers -ContentType 'application/json' -Body $roomBody
-$roomId = $room.data.id
-Invoke-RestMethod "http://localhost:8088/api/v1/live/rooms/$roomId/start" -Method Post -Headers $headers
-```
-
-开播响应会返回 SRS RTMP 推流地址、WebRTC 播放地址和 HTTP-FLV 播放地址。前端优先使用 WebRTC，浏览器不支持或信令失败时自动切换 HTTP-FLV。经 Gateway 访问写接口时使用 `Authorization: Bearer {accessToken}`；Gateway 调用 Auth 服务校验 Token 后覆盖传入的 `X-User-Id` 和 `X-User-Role`。直接访问业务服务进行本地排查时仍支持 `X-User-Id`。
-
-直播服务创建房间时会通过 OpenFeign 调用 User 服务校验主播用户，服务发现由 Nacos 提供，连接超时和读取超时可通过 `USER_SERVICE_CONNECT_TIMEOUT_MS` 与 `USER_SERVICE_READ_TIMEOUT_MS` 调整。
-
-WebSocket 弹幕地址（独立实时网关）：
-
-```text
-ws://localhost:8090/ws/chat?roomId={roomId}&ticket={one-time-ticket}
-```
-
-连接 Realtime Gateway 时由前端先调用 `/api/v1/auth/ws-ticket` 取得 30 秒有效的一次性 Ticket；Gateway 消费 Ticket 后才把可信用户 ID 注入下游。直接访问直播服务进行排查时，也可以使用 `ws://localhost:8083/ws/chat`。API Gateway `8088` 专注 HTTP，Realtime Gateway `8090` 专注 WebSocket 长连接。Nacos 地址、配置中心开关和配置分组见 [.env.example](.env.example) 中的 `NACOS_SERVER_ADDR`、`NACOS_DISCOVERY_ENABLED`、`NACOS_CONFIG_ENABLED` 与 `NACOS_CONFIG_GROUP`。
-
-直播服务实例使用 Redis Pub/Sub 的 `STREAMHUB_REALTIME_CHANNEL` 广播聊天、礼物和活动事件；每个实例只向自己持有的 WebSocket 连接发送消息。通过 `STREAMHUB_NODE_ID` 设置实例标识，便于日志和多节点排查。单实例单房间连接数和普通弹幕广播速率分别由 `STREAMHUB_MAX_SESSIONS_PER_ROOM` 与 `STREAMHUB_MAX_CHAT_EVENTS_PER_SECOND` 限制，触发速率保护的弹幕仍保存在 MySQL，可通过历史接口补偿；广播计数可从 `/actuator/metrics` 观察。
-
-监控和压测：Prometheus 默认端口为 `9090`，Grafana 默认端口为 `3000`，面板配置见 `infra/grafana`；k6 命令和结果记录模板见 [load-tests/README.md](load-tests/README.md) 与 [docs/performance-baseline.md](docs/performance-baseline.md)。
-
-架构、API、时序图、数据一致性、故障演练和面试讲解见 [docs](docs/)。
-
-发送弹幕：
-
-```json
-{"type":"CHAT","clientMessageId":"client-001","content":"hello"}
-```
-
-发送心跳：
-
-```json
-{"type":"HEARTBEAT"}
-```
-
-## 礼物与钱包接口
-
-查询礼物目录和余额：
-
-```powershell
-Invoke-RestMethod http://localhost:8083/api/v1/gifts
-Invoke-RestMethod http://localhost:8083/api/v1/wallet -Headers @{ 'X-User-Id' = '2' }
-```
-
-模拟充值并送礼：
-
-```powershell
-$headers = @{ 'X-User-Id' = '2' }
-$recharge = @{ bizNo = 'recharge-001'; amount = 1000 } | ConvertTo-Json
-Invoke-RestMethod http://localhost:8083/api/v1/wallet/recharge -Method Post -Headers $headers -ContentType 'application/json' -Body $recharge
-
-$gift = @{ giftCode = 'rose'; quantity = 1; clientOrderNo = 'gift-order-001' } | ConvertTo-Json
-Invoke-RestMethod http://localhost:8083/api/v1/live/rooms/1/gifts -Method Post -Headers $headers -ContentType 'application/json' -Body $gift
-Invoke-RestMethod http://localhost:8083/api/v1/gift-orders/gift-order-001
-```
-
-订单先返回 `PENDING`，RocketMQ 消费成功后变为 `SUCCESS`；余额不足会变为 `FAILED`。重复使用同一个充值业务号或 `clientOrderNo` 会返回已有结果，不会重复扣款。贡献榜和主播收益榜分别通过 `/api/v1/live/rooms/{roomId}/gift-rank` 与 `/api/v1/live/rooms/{roomId}/gift-income-rank` 查询。
-
-## 秒杀活动接口
-
-活动使用 UTC 的 ISO-8601 时间，创建后由主播启动，启动时会把库存预热到 Redis：
-
-```powershell
-$headers = @{ 'X-User-Id' = '1' }
-$start = [DateTime]::UtcNow.AddMinutes(-1).ToString('o')
-$end = [DateTime]::UtcNow.AddHours(1).ToString('o')
-$activity = @{ name = 'Flash Sale'; stock = 100; unitPrice = 0; startsAt = $start; endsAt = $end } | ConvertTo-Json
-$created = Invoke-RestMethod http://localhost:8083/api/v1/live/rooms/1/activities -Method Post -Headers $headers -ContentType 'application/json' -Body $activity
-$activityId = $created.data.id
-Invoke-RestMethod "http://localhost:8083/api/v1/activities/$activityId/start" -Method Post -Headers $headers
-```
-
-用户抢购时，Redis Lua 脚本原子完成库存扣减和一人一次校验，RocketMQ 异步更新订单；重复请求由 Redis 和 MySQL 双重幂等保护：
-
-```powershell
-$order = @{ clientOrderNo = 'activity-order-001' } | ConvertTo-Json
-Invoke-RestMethod "http://localhost:8083/api/v1/activities/$activityId/seckill" -Method Post -Headers @{ 'X-User-Id' = '2' } -ContentType 'application/json' -Body $order
-Invoke-RestMethod http://localhost:8083/api/v1/activity-orders/activity-order-001
-```
+直接访问 8081、8082、8083 主要用于本地排查；生产流量应统一经过网关，不应依赖客户端传入的 X-User-Id。
