@@ -14,11 +14,45 @@ spring:
         server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
         enabled: ${NACOS_CONFIG_ENABLED:true}
     gateway:
+      httpclient:
+        connect-timeout: ${GATEWAY_CONNECT_TIMEOUT_MS:1000}
+        response-timeout: ${GATEWAY_RESPONSE_TIMEOUT:5s}
+        pool:
+          type: fixed
+          max-connections: ${GATEWAY_MAX_CONNECTIONS:500}
+          max-idle-time: ${GATEWAY_MAX_IDLE_TIME:30s}
+          max-life-time: ${GATEWAY_MAX_LIFE_TIME:5m}
+          acquire-timeout: ${GATEWAY_POOL_ACQUIRE_TIMEOUT_MS:1000}
       routes:
         - id: live-service-websocket
           uri: lb:ws://streamhub-live
           predicates:
             - Path=/ws/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@clientIpKeyResolver}"
+                redis-rate-limiter.replenishRate: ${WS_HANDSHAKE_RATE_LIMIT_RPS:50}
+                redis-rate-limiter.burstCapacity: ${WS_HANDSHAKE_RATE_LIMIT_BURST:100}
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      connect-timeout: ${REDIS_CONNECT_TIMEOUT:1s}
+      timeout: ${REDIS_COMMAND_TIMEOUT:2s}
+
+streamhub:
+  cors:
+    allowed-origins: ${STREAMHUB_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:8089}
+  gateway:
+    http:
+      connect-timeout-ms: ${AUTH_INTROSPECT_CONNECT_TIMEOUT_MS:500}
+      response-timeout-ms: ${AUTH_INTROSPECT_RESPONSE_TIMEOUT_MS:1500}
+      max-connections: ${AUTH_INTROSPECT_MAX_CONNECTIONS:200}
+      max-idle-time-ms: ${AUTH_INTROSPECT_MAX_IDLE_TIME_MS:30000}
+      max-life-time-ms: ${AUTH_INTROSPECT_MAX_LIFE_TIME_MS:300000}
+      pending-acquire-timeout-ms: ${AUTH_INTROSPECT_POOL_ACQUIRE_TIMEOUT_MS:500}
 
 server:
   port: ${REALTIME_GATEWAY_PORT:8090}

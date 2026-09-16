@@ -203,6 +203,9 @@ services:
       NACOS_DISCOVERY_ENABLED: "true"
       NACOS_CONFIG_ENABLED: "true"
       NACOS_CONFIG_GROUP: ${NACOS_CONFIG_GROUP:-STREAMHUB}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      STREAMHUB_ALLOWED_ORIGINS: ${STREAMHUB_ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:8089}
     ports:
       - "${GATEWAY_SERVICE_PORT:-8088}:8088"
     depends_on:
@@ -211,6 +214,8 @@ services:
       user-service:
         condition: service_healthy
       live-service:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8088/actuator/health || exit 1"]
@@ -232,12 +237,17 @@ services:
       NACOS_DISCOVERY_ENABLED: "true"
       NACOS_CONFIG_ENABLED: "true"
       NACOS_CONFIG_GROUP: ${NACOS_CONFIG_GROUP:-STREAMHUB}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      STREAMHUB_ALLOWED_ORIGINS: ${STREAMHUB_ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:8089}
     ports:
       - "${REALTIME_GATEWAY_PORT:-8090}:8090"
     depends_on:
       auth-service:
         condition: service_healthy
       live-service:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8090/actuator/health || exit 1"]
