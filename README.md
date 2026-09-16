@@ -3,6 +3,8 @@
 StreamHub 是一个面向高并发场景的直播互动与虚拟礼物平台，采用 Spring Boot 微服务架构实现用户、认证、直播间、弹幕、礼物、钱包和活动等业务能力。
 
 项目的核心设计是将“音视频媒体面”和“业务互动面”拆开：SRS 负责推流与播放，Java 服务负责控制面、实时互动和交易业务。项目重点覆盖了多节点 WebSocket 广播、虚拟礼物幂等、秒杀削峰、故障补偿和可观测性等面试中常见的分布式系统问题。
+
+入口层已经包含统一鉴权、CORS、Redis 分布式限流、HTTP 熔断回退、连接池和超时控制；链路追踪默认使用 `X-Trace-Id`，SkyWalking Java Agent 作为可选生产增强能力。
 ## 一、项目描述
 
 ### 1. 产品能力
@@ -34,6 +36,8 @@ StreamHub 是一个面向高并发场景的直播互动与虚拟礼物平台，�
                                       跨节点实时广播
 ~~~
 
+API Gateway 负责 HTTP 路由、Token 鉴权、CORS、限流和熔断；Realtime Gateway 负责 WebSocket 握手鉴权与连接层治理。当前限流使用 Redis `RequestRateLimiter`，HTTP 下游使用 Resilience4j CircuitBreaker，未默认引入 Sentinel。
+
 ### 3. 服务职责
 
 | 模块 | 默认端口 | 职责 |
@@ -41,9 +45,9 @@ StreamHub 是一个面向高并发场景的直播互动与虚拟礼物平台，�
 | auth-service | 8081 | 注册、登录、Opaque Token 会话、Token 校验、WebSocket Ticket |
 | user-service | 8082 | 用户资料、关注关系、用户状态 |
 | live-service | 8083 | 直播间、弹幕、在线状态、礼物、钱包、活动和运营接口 |
-| gateway-service | 8088 | HTTP 路由、服务发现、统一 Token 鉴权和负载均衡 |
-| realtime-gateway | 8090 | WebSocket 长连接接入、鉴权和转发 |
-| frontend | 8089 | Vue 单页应用和 Nginx 反向代理 |
+| gateway-service | 8088 | HTTP 路由、服务发现、Token 鉴权、CORS、限流、熔断和负载均衡 |
+| realtime-gateway | 8090 | WebSocket 长连接接入、Ticket 鉴权、握手限流和转发 |
+| frontend | 8089 | Vue 单页应用、Nginx 反向代理和多实例服务发现 |
 | SRS | 1935/1985/8080 | RTMP 推流、WebRTC/HTTP-FLV/HLS 播放和媒体管理 |
 
 ### 4. 项目结构
@@ -56,21 +60,22 @@ StreamHub/
 ├── gateway-service/           # HTTP API Gateway
 ├── realtime-gateway/          # WebSocket Gateway
 ├── streamhub-common/          # 公共响应、异常、TraceId 等
-├── streamhub-gateway-support/ # 网关鉴权和客户端配置
+├── streamhub-gateway-support/ # 网关鉴权、限流、CORS、TraceId 和客户端配置
 ├── database-migrations/       # Flyway 数据库迁移
 ├── frontend/                  # Vue 3 前端
 ├── infra/                     # RocketMQ、Prometheus、Grafana 配置
 ├── load-tests/                # k6 压测脚本
-└── docs/                      # 架构、时序、一致性和面试资料
+├── docker-compose.ha.yml      # 应用层多实例 Compose overlay
+└── docs/                      # 架构、时序、一致性、生产化和面试资料
 ~~~
 ## 二、所用技术
 
 | 技术方向 | 技术选型 | 使用场景 |
 | --- | --- | --- |
 | 后端基础 | Java 17、Spring Boot 3.4.5 | 微服务业务开发和运行 |
-| 微服务治理 | Spring Cloud 2024.0.2、Spring Cloud Alibaba、Nacos 2.4.3 | 服务注册发现、配置管理和负载均衡 |
-| 网关 | Spring Cloud Gateway | HTTP 路由、统一鉴权和请求转发 |
-| 服务间调用 | OpenFeign、Spring Cloud LoadBalancer | Live 服务校验用户、服务间访问 |
+| 微服务治理 | Spring Cloud 2024.0.2、Spring Cloud Alibaba、Nacos 2.4.3、Spring Cloud LoadBalancer、Caffeine | 服务注册发现、配置管理、实例缓存和负载均衡 |
+| 网关 | Spring Cloud Gateway、Redis RequestRateLimiter、Resilience4j | HTTP 路由、统一鉴权、限流、熔断和请求转发 |
+| 服务间调用 | OpenFeign、Feign HC5、连接池和超时配置 | Live 服务校验用户、复用 HTTP 连接和服务间访问 |
 | 实时通信 | Spring WebSocket、WebSocket Gateway | 弹幕、礼物和活动事件实时下发 |
 | 数据库 | MySQL 8.4、Spring JDBC、HikariCP | 业务事实、订单、钱包流水和历史消息 |
 | 数据库变更 | Flyway | 按版本执行数据库迁移，当前包含 V1 至 V6 |
@@ -80,7 +85,7 @@ StreamHub/
 | 前端 | Vue 3、TypeScript、Vite 6、Vue Router、Pinia | 页面、路由和状态管理 |
 | 前端组件与播放 | Naive UI、mpegts.js、VueUse、vue-i18n | UI、HTTP-FLV 播放、交互和多语言 |
 | 工程化 | Docker、Docker Compose、Nginx | 一键编排、镜像构建和前端反向代理 |
-| 监控与测试 | Actuator、Micrometer、Prometheus、Grafana、JUnit、Vitest、Playwright、k6 | 指标、面板、单元测试、E2E 和压测 |
+| 监控与测试 | Actuator、Micrometer、Prometheus、Grafana、X-Trace-Id、可选 SkyWalking、JUnit、Vitest、Playwright、k6 | 指标、链路、面板、单元测试、E2E 和压测 |
 ## 三、亮点与难点
 
 ### 1. 音视频面与业务面分离
@@ -133,7 +138,9 @@ WebSocket 连接先通过 /api/v1/auth/ws-ticket 获取短时有效的一次性 
 
 ### 6. 可观测性与故障边界
 
-所有服务通过 Actuator 暴露健康检查和 Prometheus 指标，统一响应中携带 traceId，便于从网关日志追踪到业务服务。Live 服务额外记录实时广播发布数、丢弃数和本地降级数。
+所有服务通过 Actuator 暴露健康检查和 Prometheus 指标。Gateway 会生成或透传 `X-Trace-Id`，并将其传播到 WebClient、Feign 和业务服务，统一响应中携带 traceId，便于从网关日志追踪到业务服务。Live 服务额外记录实时广播发布数、丢弃数和本地降级数。
+
+Prometheus/Grafana 默认启用，用于指标、容量和告警；SkyWalking Agent 需要额外提供 Agent JAR 和 OAP 地址，通过 `SKYWALKING_AGENT_PATH` 可选启用，详见[生产化部署补强](docs/production-hardening.md)。
 
 项目对组件职责进行了明确划分：
 
@@ -143,6 +150,7 @@ WebSocket 连接先通过 /api/v1/auth/ws-ticket 获取短时有效的一次性 
 | Redis | 热点状态、库存、榜单、限流和在线广播 | 可靠历史消息和最终账务 |
 | RocketMQ | 异步削峰、重试和延迟任务 | 自动解决跨存储分布式事务 |
 | Redis Pub/Sub | 在线实时广播 | 断线消息可靠投递 |
+| API Gateway | 鉴权、CORS、限流、熔断和入口超时 | 替代业务幂等、库存和账务一致性 |
 
 常见面试追问：
 
@@ -153,6 +161,7 @@ WebSocket 连接先通过 /api/v1/auth/ws-ticket 获取短时有效的一次性 
 | MQ 重复投递怎么办？ | 订单号、钱包流水业务号和 MySQL 唯一索引共同构成幂等边界。 |
 | 如何防止秒杀超卖？ | Redis Lua 原子预扣负责入口并发控制，MySQL 唯一索引负责最终落库，后台对账负责修复异常。 |
 | 如何定位慢请求？ | 用 traceId 关联网关与服务日志，结合 Actuator/Prometheus 的 p95、JVM、连接池、Redis、MQ 和慢 SQL 指标。 |
+| 为什么没有默认引入 Sentinel？ | 当前 Redis 已承担分布式限流，Gateway 使用 Redis RequestRateLimiter 和 Resilience4j，避免同时维护两套路由规则；需要 Sentinel Dashboard、集群流控或 Sentinel 生态时再引入。 |
 | 能否直接宣称百万并发？ | 不能。需要区分 CDN 观看规模、WebSocket 连接数、业务 QPS、实例数量和实际压测条件。 |
 ## 四、快速开始
 
@@ -174,6 +183,17 @@ docker compose up -d --build
 
 Compose 会启动 MySQL、Redis、RocketMQ、Nacos、SRS、五个 Java 服务、前端、Prometheus 和 Grafana。首次启动需要构建镜像并下载 Maven/npm 依赖，耗时可能较长。
 
+基础 Compose 适合单机开发和功能验证。需要验证应用层多实例时，使用 HA overlay：
+
+~~~powershell
+docker compose -f docker-compose.yml -f docker-compose.ha.yml up -d `
+  --scale gateway-service=2 `
+  --scale realtime-gateway=2 `
+  --scale live-service=2
+~~~
+
+该 overlay 只移除业务服务的宿主机端口映射并启用服务发现，不会自动消除 MySQL、Redis、RocketMQ、Nacos 和 SRS 的单点问题；完整说明见[生产化部署补强](docs/production-hardening.md)。
+
 检查容器状态：
 
 ~~~powershell
@@ -192,6 +212,7 @@ docker compose logs -f gateway-service live-service realtime-gateway
 | --- | --- |
 | http://localhost:8089 | 前端页面 |
 | http://localhost:8088 | API Gateway |
+| http://localhost:8090 | Realtime Gateway，WebSocket 接入 |
 | http://localhost:8848/nacos | Nacos 控制台 |
 | http://localhost:9090 | Prometheus |
 | http://localhost:3000 | Grafana，默认账号 admin，密码 streamhub-admin |
@@ -199,8 +220,13 @@ docker compose logs -f gateway-service live-service realtime-gateway
 | localhost:6379 | Redis |
 | localhost:9876 | RocketMQ NameServer |
 | localhost:1935 | SRS RTMP 推流端口 |
+| localhost:1985 | SRS HTTP/WebRTC API |
+| localhost:8080 | SRS HTTP-FLV/HLS |
+| localhost:8000/udp | SRS WebRTC UDP |
 
 端口和本地凭据可在 .env 中覆盖，完整示例见 [.env.example](.env.example)。数据库迁移会在业务服务启动时由 Flyway 自动执行。
+
+如果前后端分域部署，需要将生产前端域名配置到 `STREAMHUB_ALLOWED_ORIGINS`；默认值仅包含本地 Vite 和前端 Nginx 地址。Gateway 的限流、超时、数据库连接池和 Redis 连接池参数也都可以通过 `.env` 覆盖。
 
 ### 3. 快速验证服务
 
@@ -259,6 +285,8 @@ npm run dev
 
 前端开发地址默认为 http://localhost:5173，Vite 会将 /api、/ws、/live 和 /rtc 代理到本机的网关或 SRS 端口。可通过 VITE_DEV_API_TARGET、VITE_DEV_REALTIME_TARGET、VITE_DEV_MEDIA_TARGET 和 VITE_DEV_RTC_TARGET 覆盖代理地址。
 
+开发环境通过 Vite 代理避免跨域；生产环境建议使用前端 Nginx 的同源 `/api` 和 `/ws` 入口，若必须跨域则配置 `STREAMHUB_ALLOWED_ORIGINS`，不要使用通配来源。
+
 ### 5. 测试与构建
 
 前端检查：
@@ -295,6 +323,7 @@ Compose 使用命名卷持久化 MySQL、Redis、RocketMQ、Nacos、MinIO、Prom
 - [面试讲解提纲](docs/interview-guide.md)：一分钟介绍、核心亮点和常见追问。
 - [故障演练](docs/fault-drills.md)：Redis、RocketMQ、Live 节点和对账任务的演练方式。
 - [性能基线](docs/performance-baseline.md)：压测与故障演练结果记录。
+- [生产化部署补强](docs/production-hardening.md)：多实例、超时预算、限流熔断和可选 SkyWalking 配置。
 - [k6 压测说明](load-tests/README.md)：秒杀和 WebSocket 压测命令。
 
 经过 API Gateway 的用户请求使用：
