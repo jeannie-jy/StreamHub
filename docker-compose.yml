@@ -171,7 +171,6 @@ services:
       MEDIA_RTMP_PUBLISH_BASE: ${MEDIA_RTMP_PUBLISH_BASE:-rtmp://localhost:1935/live/}
       MEDIA_HTTP_FLV_PLAY_BASE: ${MEDIA_HTTP_FLV_PLAY_BASE:-/live/}
       MEDIA_WEBRTC_PLAY_BASE: ${MEDIA_WEBRTC_PLAY_BASE:-/rtc/v1/whep/?app=live&stream=}
-      STREAMHUB_NODE_ID: compose-live-1
     ports:
       - "${LIVE_SERVICE_PORT:-8083}:8083"
     depends_on:

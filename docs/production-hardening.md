@@ -15,6 +15,8 @@ docker compose -f docker-compose.yml -f docker-compose.ha.yml up -d `
 
 Live 节点必须使用不同的 `STREAMHUB_NODE_ID`。使用编排平台时应把 Pod/Task 名称注入该变量，不能让所有副本共享同一个节点 ID。
 
+Compose 默认会回退到容器的 `HOSTNAME` 作为节点 ID；如果通过外部环境显式设置 `STREAMHUB_NODE_ID`，扩容时必须保证每个副本的值不同。
+
 这只是应用层多实例配置，不会自动消除 MySQL、Redis、RocketMQ、Nacos 和 SRS 的单点问题。生产环境仍需要对应的集群或托管高可用方案。
 
 ## SkyWalking
@@ -33,6 +35,8 @@ Agent JAR 和 Collector 地址由部署环境提供。通常还需要设置：
 - 为每个服务注入相同 Agent，但使用不同的服务名。
 
 Prometheus/Grafana 仍保留，用于容量、连接池和业务指标；SkyWalking 用于跨 Gateway、Feign、数据库和 MQ 的调用链排障。
+
+当前网关限流使用 Redis `RequestRateLimiter`，因为项目已经依赖 Redis，且不需要额外维护 Sentinel Dashboard 和规则同步。只有在需要集中式规则控制台、集群流控和 Sentinel 生态监控时，才建议继续引入 Sentinel；业务库存、钱包和订单幂等不能交给网关限流替代。
 
 ## 超时预算
 
