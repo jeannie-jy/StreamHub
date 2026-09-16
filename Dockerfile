@@ -31,4 +31,5 @@ RUN addgroup -S streamhub && adduser -S streamhub -G streamhub
 USER streamhub
 
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0 -Djava.security.egd=file:/dev/./urandom"
-ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]
+ENV SKYWALKING_AGENT_PATH=""
+ENTRYPOINT ["sh", "-c", "if [ -n \"$SKYWALKING_AGENT_PATH\" ]; then JAVA_OPTS=\"$JAVA_OPTS -javaagent:$SKYWALKING_AGENT_PATH\"; fi; exec java $JAVA_OPTS -jar /app/app.jar"]

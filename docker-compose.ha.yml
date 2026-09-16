@@ -1,0 +1,9 @@
+services:
+  gateway-service:
+    ports: !reset []
+
+  realtime-gateway:
+    ports: !reset []
+
+  live-service:
+    ports: !reset []

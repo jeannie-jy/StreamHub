@@ -49,6 +49,7 @@ public class TokenAuthenticationFilter implements GlobalFilter, Ordered {
                     .post()
                     .uri("http://streamhub-auth/api/v1/auth/ws-ticket/introspect")
                     .contentType(MediaType.APPLICATION_JSON)
+                    .header("X-Trace-Id", traceId(exchange))
                     .bodyValue(Map.of("ticket", ticket))
                     .retrieve()
                     .bodyToMono(SESSION_TYPE)
@@ -68,6 +69,7 @@ public class TokenAuthenticationFilter implements GlobalFilter, Ordered {
                 .post()
                 .uri("http://streamhub-auth/api/v1/auth/introspect")
                 .header(HttpHeaders.AUTHORIZATION, authorization)
+                .header("X-Trace-Id", traceId(exchange))
                 .retrieve()
                 .bodyToMono(SESSION_TYPE)
                 .flatMap(response -> {
@@ -116,6 +118,10 @@ public class TokenAuthenticationFilter implements GlobalFilter, Ordered {
         return StringUtils.hasText(authorization)
                 && authorization.regionMatches(true, 0, "Bearer ", 0, 7)
                 && StringUtils.hasText(authorization.substring(7));
+    }
+
+    private String traceId(ServerWebExchange exchange) {
+        return exchange.getRequest().getHeaders().getFirst("X-Trace-Id");
     }
 
     private ServerWebExchange withUserId(ServerWebExchange exchange, long userId, String role, String path) {
