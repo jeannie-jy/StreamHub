@@ -88,6 +88,7 @@ public class TokenAuthenticationFilter implements GlobalFilter, Ordered {
 
     boolean isPublic(String path, HttpMethod method) {
         if (path.startsWith("/actuator/")
+                || path.startsWith("/fallback/")
                 || "/api/v1/auth/register".equals(path)
                 || "/api/v1/auth/login".equals(path)
                 || "/api/v1/auth/ping".equals(path)

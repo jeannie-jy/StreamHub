@@ -36,7 +36,7 @@ Agent JAR 和 Collector 地址由部署环境提供。通常还需要设置：
 
 Prometheus/Grafana 仍保留，用于容量、连接池和业务指标；SkyWalking 用于跨 Gateway、Feign、数据库和 MQ 的调用链排障。
 
-当前网关限流使用 Redis `RequestRateLimiter`，因为项目已经依赖 Redis，且不需要额外维护 Sentinel Dashboard 和规则同步。只有在需要集中式规则控制台、集群流控和 Sentinel 生态监控时，才建议继续引入 Sentinel；业务库存、钱包和订单幂等不能交给网关限流替代。
+当前网关限流使用 Redis `RequestRateLimiter`，HTTP 下游使用 Resilience4j CircuitBreaker，因为项目已经依赖 Redis，且不需要额外维护 Sentinel Dashboard 和规则同步。只有在需要集中式规则控制台、集群流控和 Sentinel 生态监控时，才建议把限流实现替换或扩展为 Sentinel；业务库存、钱包和订单幂等不能交给网关限流替代。
 
 ## 超时预算
 

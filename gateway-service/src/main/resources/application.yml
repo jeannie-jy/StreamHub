@@ -34,14 +34,28 @@ spring:
                 key-resolver: "#{@clientIpKeyResolver}"
                 redis-rate-limiter.replenishRate: ${AUTH_RATE_LIMIT_RPS:10}
                 redis-rate-limiter.burstCapacity: ${AUTH_RATE_LIMIT_BURST:20}
+            - name: CircuitBreaker
+              args:
+                name: authService
+                fallbackUri: forward:/fallback/auth
         - id: user-service
           uri: lb://streamhub-user
           predicates:
             - Path=/api/v1/users/**,/api/v1/ops/users/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: userService
+                fallbackUri: forward:/fallback/user
         - id: live-service-api
           uri: lb://streamhub-live
           predicates:
             - Path=/api/v1/live/**,/api/v1/gifts,/api/v1/wallet/**,/api/v1/activities/**,/api/v1/gift-orders/**,/api/v1/activity-orders/**,/api/v1/ops/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: liveService
+                fallbackUri: forward:/fallback/live
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -75,3 +89,28 @@ management:
     health:
       probes:
         enabled: true
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      authService:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: ${AUTH_CIRCUIT_WINDOW_SIZE:20}
+        minimum-number-of-calls: ${AUTH_CIRCUIT_MIN_CALLS:10}
+        failure-rate-threshold: ${AUTH_CIRCUIT_FAILURE_RATE:50}
+        wait-duration-in-open-state: ${AUTH_CIRCUIT_OPEN_WAIT:10s}
+        permitted-number-of-calls-in-half-open-state: ${AUTH_CIRCUIT_HALF_OPEN_CALLS:3}
+      userService:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: ${USER_CIRCUIT_WINDOW_SIZE:20}
+        minimum-number-of-calls: ${USER_CIRCUIT_MIN_CALLS:10}
+        failure-rate-threshold: ${USER_CIRCUIT_FAILURE_RATE:50}
+        wait-duration-in-open-state: ${USER_CIRCUIT_OPEN_WAIT:10s}
+        permitted-number-of-calls-in-half-open-state: ${USER_CIRCUIT_HALF_OPEN_CALLS:3}
+      liveService:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: ${LIVE_CIRCUIT_WINDOW_SIZE:20}
+        minimum-number-of-calls: ${LIVE_CIRCUIT_MIN_CALLS:10}
+        failure-rate-threshold: ${LIVE_CIRCUIT_FAILURE_RATE:50}
+        wait-duration-in-open-state: ${LIVE_CIRCUIT_OPEN_WAIT:10s}
+        permitted-number-of-calls-in-half-open-state: ${LIVE_CIRCUIT_HALF_OPEN_CALLS:3}
