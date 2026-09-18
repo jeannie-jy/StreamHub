@@ -20,9 +20,13 @@ const reconnectCount = ref(0)
 const scrollRef = ref<ScrollbarInst | null>(null)
 let socket: WebSocket | null = null
 let heartbeatTimer: number | undefined
+let heartbeatTimeoutTimer: number | undefined
 let reconnectTimer: number | undefined
 let stopped = false
 let shouldReconnect = true
+
+const HEARTBEAT_INTERVAL_MS = 20_000
+const HEARTBEAT_ACK_TIMEOUT_MS = 45_000
 
 const statusText = computed(() => {
   if (!props.userId) return '登录后参与'
@@ -71,23 +75,31 @@ async function connect() {
     const base = import.meta.env.VITE_WS_BASE_URL || '/ws'
     const wsBase = base.startsWith('http') ? base.replace(/^http/, 'ws') : `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}${base}`
     const params = new URLSearchParams({ roomId: String(props.roomId), ticket: ticket.ticket })
-    socket = new WebSocket(`${wsBase}/chat?${params}`)
-    socket.onopen = () => {
-      connected.value = true
+    const current = new WebSocket(`${wsBase}/chat?${params}`)
+    socket = current
+    current.onopen = () => {
+      if (socket !== current) return
       connecting.value = false
-      reconnectCount.value = 0
+      armHeartbeatTimeout(current)
+      current.send(JSON.stringify({ type: 'HEARTBEAT' }))
       heartbeatTimer = window.setInterval(() => {
-        if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'HEARTBEAT' }))
-      }, 20_000)
+        if (socket === current && current.readyState === WebSocket.OPEN) {
+          current.send(JSON.stringify({ type: 'HEARTBEAT' }))
+        }
+      }, HEARTBEAT_INTERVAL_MS)
     }
-    socket.onmessage = (event) => {
-      try { handleEvent(JSON.parse(event.data)) } catch { messageApi?.warning('收到无法识别的实时消息') }
+    current.onmessage = (event) => {
+      if (socket !== current) return
+      try { handleEvent(JSON.parse(event.data), current) } catch { messageApi?.warning('收到无法识别的实时消息') }
     }
-    socket.onerror = () => socket?.close()
-    socket.onclose = async () => {
+    current.onerror = () => current.close()
+    current.onclose = async () => {
+      if (socket !== current) return
+      socket = null
       connected.value = false
       connecting.value = false
       window.clearInterval(heartbeatTimer)
+      window.clearTimeout(heartbeatTimeoutTimer)
       if (stopped || !shouldReconnect || props.userId !== userId) return
       await loadHistory(messages.value.at(-1)?.id || 0)
       scheduleReconnect()
@@ -103,6 +115,7 @@ async function connect() {
 
 function closeSocket() {
   window.clearInterval(heartbeatTimer)
+  window.clearTimeout(heartbeatTimeoutTimer)
   window.clearTimeout(reconnectTimer)
   connecting.value = false
   connected.value = false
@@ -115,12 +128,29 @@ function scheduleReconnect() {
   if (stopped || !shouldReconnect || !props.userId) return
   window.clearTimeout(reconnectTimer)
   reconnectCount.value += 1
-  const delay = Math.min(15_000, 1_000 * 2 ** Math.min(reconnectCount.value - 1, 4))
+  const baseDelay = Math.min(15_000, 1_000 * 2 ** Math.min(reconnectCount.value - 1, 4))
+  const delay = Math.round(baseDelay * (0.8 + Math.random() * 0.4))
   reconnectTimer = window.setTimeout(connect, delay)
 }
 
-function handleEvent(event: Record<string, any>) {
-  if (event.type === 'CHAT') {
+function armHeartbeatTimeout(current: WebSocket) {
+  window.clearTimeout(heartbeatTimeoutTimer)
+  heartbeatTimeoutTimer = window.setTimeout(() => {
+    if (socket === current && current.readyState === WebSocket.OPEN) {
+      current.close(4000, 'heartbeat timeout')
+    }
+  }, HEARTBEAT_ACK_TIMEOUT_MS)
+}
+
+function handleEvent(event: Record<string, any>, current: WebSocket) {
+  if (event.type === 'CONNECTED') {
+    connected.value = true
+    connecting.value = false
+    reconnectCount.value = 0
+    armHeartbeatTimeout(current)
+  } else if (event.type === 'HEARTBEAT_ACK') {
+    armHeartbeatTimeout(current)
+  } else if (event.type === 'CHAT') {
     appendMessages([event as ChatMessage])
     void scrollToBottom()
   } else if (event.type === 'ERROR') {

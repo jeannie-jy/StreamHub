@@ -8,6 +8,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.util.StringUtils;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -28,6 +30,7 @@ public class RoomWebSocketHandler extends TextWebSocketHandler {
     private final UserServiceClient userServiceClient;
     private final SensitiveWordService sensitiveWordService;
     private final RoomMuteRepository roomMuteRepository;
+    private final long sessionTimeoutMillis;
     private final Map<Long, Long> lastMessageAtByUser = new ConcurrentHashMap<>();
 
     public RoomWebSocketHandler(
@@ -39,7 +42,8 @@ public class RoomWebSocketHandler extends TextWebSocketHandler {
             RoomBroadcastService roomBroadcastService,
             UserServiceClient userServiceClient,
             SensitiveWordService sensitiveWordService,
-            RoomMuteRepository roomMuteRepository) {
+            RoomMuteRepository roomMuteRepository,
+            @Value("${streamhub.realtime.session-timeout-ms:75000}") long sessionTimeoutMillis) {
         this.objectMapper = objectMapper;
         this.liveRoomRepository = liveRoomRepository;
         this.chatMessageRepository = chatMessageRepository;
@@ -49,6 +53,7 @@ public class RoomWebSocketHandler extends TextWebSocketHandler {
         this.userServiceClient = userServiceClient;
         this.sensitiveWordService = sensitiveWordService;
         this.roomMuteRepository = roomMuteRepository;
+        this.sessionTimeoutMillis = Math.max(1_000, sessionTimeoutMillis);
     }
 
     @Override
@@ -64,10 +69,10 @@ public class RoomWebSocketHandler extends TextWebSocketHandler {
 
         session.getAttributes().put("roomId", roomId);
         session.getAttributes().put("userId", userId);
-        if (!roomSessionRegistry.add(roomId, session)) {
+        if (!roomSessionRegistry.add(roomId, userId, session)) {
             return;
         }
-        onlinePresenceService.join(roomId, userId);
+        onlinePresenceService.join(roomId, userId, session.getId());
         send(session, Map.of(
                 "type", "CONNECTED",
                 "roomId", roomId,
@@ -87,7 +92,8 @@ public class RoomWebSocketHandler extends TextWebSocketHandler {
         ChatCommand command = objectMapper.readValue(message.getPayload(), ChatCommand.class);
         String type = StringUtils.hasText(command.type()) ? command.type().trim().toUpperCase() : "CHAT";
         if ("HEARTBEAT".equals(type)) {
-            onlinePresenceService.heartbeat(roomId, userId);
+            roomSessionRegistry.heartbeat(roomId, session);
+            onlinePresenceService.heartbeat(roomId, userId, session.getId());
             send(session, Map.of("type", "HEARTBEAT_ACK", "serverTime", Instant.now()));
             return;
         }
@@ -159,8 +165,21 @@ public class RoomWebSocketHandler extends TextWebSocketHandler {
             roomSessionRegistry.remove(roomId, session);
         }
         if (roomId != null && userId != null) {
-            onlinePresenceService.leave(roomId, userId);
+            onlinePresenceService.leave(roomId, userId, session.getId());
         }
+    }
+
+    @Scheduled(fixedDelayString = "${streamhub.realtime.session-scan-interval-ms:15000}")
+    public void closeExpiredSessions() {
+        long cutoff = System.currentTimeMillis() - sessionTimeoutMillis;
+        roomSessionRegistry.removeExpired(cutoff).forEach(state -> {
+            onlinePresenceService.leave(state.roomId(), state.userId(), state.session().getId());
+            try {
+                state.session().close(new CloseStatus(4000, "heartbeat timeout"));
+            } catch (IOException exception) {
+                // The registry and presence entries are already removed; nothing remains to clean up.
+            }
+        });
     }
 
     public void broadcastEvent(long roomId, Map<String, Object> payload) {

@@ -77,6 +77,9 @@ streamhub:
     node-id: ${STREAMHUB_NODE_ID:${HOSTNAME:local}}
     max-sessions-per-room: ${STREAMHUB_MAX_SESSIONS_PER_ROOM:10000}
     max-chat-events-per-second: ${STREAMHUB_MAX_CHAT_EVENTS_PER_SECOND:1000}
+    session-timeout-ms: ${STREAMHUB_SESSION_TIMEOUT_MS:75000}
+    session-scan-interval-ms: ${STREAMHUB_SESSION_SCAN_INTERVAL_MS:15000}
+    presence-ttl-ms: ${STREAMHUB_PRESENCE_TTL_MS:90000}
   reconciliation:
     enabled: ${STREAMHUB_RECONCILIATION_ENABLED:true}
     fixed-delay-ms: ${STREAMHUB_RECONCILIATION_FIXED_DELAY_MS:60000}
