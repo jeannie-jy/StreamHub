@@ -168,6 +168,7 @@ services:
     environment:
       <<: *business-service-environment
       ROCKETMQ_NAMESRV_ADDR: rocketmq-namesrv:9876
+      STREAMHUB_NODE_ID: ${STREAMHUB_NODE_ID:-compose-live}
       MEDIA_RTMP_PUBLISH_BASE: ${MEDIA_RTMP_PUBLISH_BASE:-rtmp://localhost:1935/live/}
       MEDIA_HTTP_FLV_PLAY_BASE: ${MEDIA_HTTP_FLV_PLAY_BASE:-/live/}
       MEDIA_WEBRTC_PLAY_BASE: ${MEDIA_WEBRTC_PLAY_BASE:-/rtc/v1/whep/?app=live&stream=}

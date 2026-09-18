@@ -302,10 +302,10 @@ public class ActivityService {
     }
 
     private String stockKey(long activityId) {
-        return "activity:" + activityId + ":stock";
+        return RedisKeys.activityStock(activityId);
     }
 
     private String userKey(long activityId) {
-        return "activity:" + activityId + ":users";
+        return RedisKeys.activityUsers(activityId);
     }
 }

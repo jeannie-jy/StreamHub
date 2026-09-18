@@ -74,7 +74,7 @@ streamhub:
     webrtc-play-base: ${MEDIA_WEBRTC_PLAY_BASE:/rtc/v1/whep/?app=live&stream=}
   realtime:
     channel: ${STREAMHUB_REALTIME_CHANNEL:live:room:events}
-    node-id: ${STREAMHUB_NODE_ID:${HOSTNAME:local}}
+    node-id: ${STREAMHUB_NODE_ID:${HOSTNAME:}}
     max-sessions-per-room: ${STREAMHUB_MAX_SESSIONS_PER_ROOM:10000}
     max-chat-events-per-second: ${STREAMHUB_MAX_CHAT_EVENTS_PER_SECOND:1000}
     session-timeout-ms: ${STREAMHUB_SESSION_TIMEOUT_MS:75000}

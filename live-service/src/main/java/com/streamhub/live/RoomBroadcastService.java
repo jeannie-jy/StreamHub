@@ -34,14 +34,14 @@ public class RoomBroadcastService {
             StringRedisTemplate stringRedisTemplate,
             RoomSessionRegistry roomSessionRegistry,
             @Value("${streamhub.realtime.channel:live:room:events}") String channel,
-            @Value("${streamhub.realtime.node-id:local}") String sourceNodeId,
+            NodeIdentity nodeIdentity,
             @Value("${streamhub.realtime.max-chat-events-per-second:1000}") int maxChatEventsPerSecond,
             MeterRegistry meterRegistry) {
         this.objectMapper = objectMapper;
         this.stringRedisTemplate = stringRedisTemplate;
         this.roomSessionRegistry = roomSessionRegistry;
         this.channel = channel;
-        this.sourceNodeId = sourceNodeId;
+        this.sourceNodeId = nodeIdentity.value();
         this.maxChatEventsPerSecond = Math.max(1, maxChatEventsPerSecond);
         this.droppedChatEvents = Counter.builder("streamhub.realtime.broadcast.dropped")
                 .tag("type", "chat")

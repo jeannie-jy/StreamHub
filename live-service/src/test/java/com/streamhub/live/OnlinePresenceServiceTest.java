@@ -8,7 +8,10 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 class OnlinePresenceServiceTest {
     @Test
     void closingOneOfSeveralConnectionsKeepsTheUserOnline() {
-        OnlinePresenceService service = new OnlinePresenceService(new StringRedisTemplate(), 90_000, "node-a");
+        OnlinePresenceService service = new OnlinePresenceService(
+                new StringRedisTemplate(),
+                90_000,
+                new NodeIdentity("node-a", "boot-a"));
         service.join(1, 7, "connection-a");
         service.join(1, 7, "connection-b");
 

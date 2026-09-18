@@ -18,6 +18,7 @@ public class OnlinePresenceService {
             redis.call('ZREMRANGEBYSCORE', KEYS[2], 0, ARGV[3])
             redis.call('PEXPIRE', KEYS[2], ARGV[4])
             redis.call('ZADD', KEYS[1], ARGV[2], ARGV[5])
+            redis.call('PEXPIRE', KEYS[1], ARGV[6])
             return 1
             """, Long.class);
     private static final DefaultRedisScript<Long> LEAVE_SCRIPT = new DefaultRedisScript<>("""
@@ -32,16 +33,21 @@ public class OnlinePresenceService {
 
     private final StringRedisTemplate redisTemplate;
     private final Duration heartbeatTtl;
-    private final String nodeId;
+    private final long redisKeyTtlMillis;
+    private final NodeIdentity nodeIdentity;
     private final Map<Long, Map<String, Long>> localConnectionsByRoom = new ConcurrentHashMap<>();
 
     public OnlinePresenceService(
             StringRedisTemplate redisTemplate,
             @Value("${streamhub.realtime.presence-ttl-ms:90000}") long heartbeatTtlMillis,
-            @Value("${streamhub.realtime.node-id:${HOSTNAME:local}}") String nodeId) {
+            NodeIdentity nodeIdentity) {
         this.redisTemplate = redisTemplate;
-        this.heartbeatTtl = Duration.ofMillis(Math.max(1_000, heartbeatTtlMillis));
-        this.nodeId = nodeId;
+        long safeHeartbeatTtlMillis = Math.max(1_000, heartbeatTtlMillis);
+        this.heartbeatTtl = Duration.ofMillis(safeHeartbeatTtlMillis);
+        this.redisKeyTtlMillis = safeHeartbeatTtlMillis > Long.MAX_VALUE / 2
+                ? Long.MAX_VALUE
+                : safeHeartbeatTtlMillis * 2;
+        this.nodeIdentity = nodeIdentity;
     }
 
     public void join(long roomId, long userId, String connectionId) {
@@ -59,8 +65,9 @@ public class OnlinePresenceService {
                     presenceId(connectionId),
                     String.valueOf(now),
                     String.valueOf(now - heartbeatTtl.toMillis()),
-                    String.valueOf(heartbeatTtl.toMillis() * 2),
-                    String.valueOf(userId));
+                    String.valueOf(redisKeyTtlMillis),
+                    String.valueOf(userId),
+                    String.valueOf(redisKeyTtlMillis));
         } catch (RuntimeException ignored) {
             // Redis is an optimization for presence; local connections still remain usable.
         }
@@ -116,14 +123,14 @@ public class OnlinePresenceService {
     }
 
     private String presenceId(String connectionId) {
-        return nodeId + ":" + connectionId;
+        return nodeIdentity.value() + ":" + connectionId;
     }
 
     private String key(long roomId) {
-        return "live:room:" + roomId + ":online";
+        return RedisKeys.roomOnline(roomId);
     }
 
     private String connectionKey(long roomId, long userId) {
-        return "live:room:" + roomId + ":user:" + userId + ":connections";
+        return RedisKeys.roomUserConnections(roomId, userId);
     }
 }
