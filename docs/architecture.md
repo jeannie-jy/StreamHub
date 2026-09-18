@@ -41,15 +41,25 @@ Java 服务只负责控制面、互动消息和交易业务。观看规模的扩
 
 | Key | 类型 | 用途 |
 | --- | --- | --- |
-| live:room:{roomId}:online | ZSet | 用户心跳时间和在线人数 |
-| live:room:{roomId}:gift:contributors | ZSet | 房间贡献榜 |
-| live:room:{roomId}:gift:income | ZSet | 主播收益榜 |
+| live:room:{roomId}:online | ZSet | member=userId，score=该用户最近连接心跳时间 |
+| live:room:{roomId}:user:&lt;userId&gt;:connections | ZSet | member=nodeId:bootId:connectionId，score=单连接最近心跳时间 |
+| live:room:&lt;roomId&gt;:rank:contributors | ZSet | 房间贡献榜 |
+| live:room:&lt;roomId&gt;:rank:income | ZSet | 主播收益榜 |
 | activity:{activityId}:stock | String | 活动库存 |
 | activity:{activityId}:users | Set | 一人一单校验 |
-| live:room:{roomId}:broadcast:rate | String | 普通弹幕秒级广播保护 |
+| live:room:&lt;roomId&gt;:broadcast:rate | String | 普通弹幕秒级广播保护 |
+| moderation:sensitive-words | Set | 活跃敏感词缓存 |
+| streamhub:auth:ws-ticket:&lt;sha256&gt; | String | 短时一次性 WebSocket Ticket |
+| streamhub:lock:reconciliation | String | 多实例对账任务锁 |
 | configured channel | Pub/Sub | Chat、Gift、Activity 实时事件 |
 
+表中在线状态和活动 Key 的花括号是 Key 的实际组成部分，不只是文档占位符。这样同一房间或同一活动的多 Key Lua 操作在 Redis Cluster 中会落到同一个 Hash Slot。
+
+在线状态采用两层 ZSet：房间级 ZSet 统计去重用户，用户级 ZSet 跟踪该用户在不同 Live 节点上的每条连接。实例标识由配置基础名和进程启动 UUID 共同组成，避免多实例的连接 ID 冲突。客户端每 20 秒发送心跳，45 秒没有 ACK 时主动重连；服务端 75 秒没有收到心跳时关闭连接，每 15 秒扫描一次；Redis Presence TTL 为 90 秒，在线相关 Key 的过期时间为其两倍。Redis 不可用时退化为本节点连接统计。
+
 Redis Pub/Sub 只负责在线广播。断线客户端必须用 MySQL 历史弹幕接口补偿，不能把 Pub/Sub 当作唯一消息存储。
+
+本地 Compose 使用单节点 Redis 7.4、AOF 和持久化卷，满足开发与故障演练，但不构成高可用部署。生产环境应优先使用托管 Redis 或主从 Sentinel；只有容量和吞吐需要分片时再使用 Redis Cluster。
 
 ## 观测指标
 

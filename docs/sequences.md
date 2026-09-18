@@ -17,7 +17,13 @@ sequenceDiagram
     G1->>Auth: introspect Bearer Token
     Auth-->>G1: userId
     G1->>L1: 代理连接并覆盖 userId
+    L1->>R: Lua 写入用户连接和房间在线 ZSet
     L1-->>C1: CONNECTED
+    loop 每 20 秒心跳
+        C1->>L1: HEARTBEAT
+        L1->>R: Lua 刷新连接心跳、清理过期连接和 Key TTL
+        L1-->>C1: HEARTBEAT_ACK
+    end
     C1->>L1: CHAT(clientMessageId, content)
     L1->>DB: 保存 chat_message
     L1->>R: 发布 RoomEvent
@@ -31,6 +37,8 @@ sequenceDiagram
 ~~~
 
 普通弹幕先落 MySQL，再尝试实时广播。单用户 300ms 发送保护和房间秒级广播保护只影响实时广播压力，历史记录仍可补偿。
+
+客户端 45 秒没有收到 HEARTBEAT_ACK 时关闭连接并带随机抖动重连。服务端每 15 秒扫描一次，关闭 75 秒没有心跳的 Session；Redis Presence TTL 为 90 秒。房间级 ZSet 统计用户，用户级 ZSet 跟踪 `nodeId:bootId:connectionId`，因此关闭同一用户的一条连接不会把其他连接误判为离线。
 
 ## 虚拟礼物
 

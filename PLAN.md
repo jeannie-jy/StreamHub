@@ -141,13 +141,12 @@ Nginx
 ### Redis Key 约定
 
 ```text
-live:room:{roomId}
-live:room:{roomId}:online              # ZSet，member=userId，score=最后心跳时间
-live:room:{roomId}:popularity
-live:room:{roomId}:rank:contributors   # ZSet
-live:room:{roomId}:rank:income         # ZSet
+live:room:{roomId}:online                         # ZSet，member=userId，score=最后心跳时间；{roomId} 为真实 Hash Tag
+live:room:{roomId}:user:<userId>:connections      # ZSet，member=nodeId:bootId:connectionId
+live:room:<roomId>:rank:contributors              # ZSet
+live:room:<roomId>:rank:income                    # ZSet
 live:gift:nonce:{token}
-activity:{activityId}:stock
+activity:{activityId}:stock             # {activityId} 为真实 Hash Tag
 activity:{activityId}:users
 rate:ws:user:{userId}
 rate:ws:room:{roomId}

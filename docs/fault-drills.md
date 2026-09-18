@@ -53,11 +53,22 @@ Invoke-RestMethod http://localhost:8083/actuator/health
 
 ## 服务重启和 WebSocket 节点摘除
 
-1. 启动两个 Live 实例和两个 Realtime Gateway 实例，使用不同的 STREAMHUB_NODE_ID 和端口。
-2. 在两个节点分别建立同一房间连接，互发 CHAT、GIFT 和 ACTIVITY_ORDER 事件。
-3. 停止其中一个 Realtime Gateway，确认另一个节点仍能接受连接和广播。
-4. 重启被停止的节点，客户端重连并按 afterId 补偿弹幕。
-5. 对比 Prometheus 的 published、dropped 和 local fallback 指标。
+1. 启动两个 Live 实例和两个 Realtime Gateway 实例，使用不同的 STREAMHUB_NODE_ID 和端口；运行时还会追加进程启动 UUID。
+2. 让同一用户在两个 Live 节点分别建立连接，确认房间在线人数只增加 1，用户连接 ZSet 中存在两个不同 member。
+3. 关闭其中一条连接，确认用户仍在线；关闭最后一条连接后，确认用户从房间在线 ZSet 移除。
+4. 建立连接后停止发送心跳，确认客户端 45 秒无 ACK 后主动重连，服务端在 75 秒超时加 15 秒扫描窗口内关闭僵尸连接。
+5. 强制终止其中一个 Live 节点，确认其遗留 Presence 在 90 秒后不再计入在线人数，在线相关 Key 最终按 TTL 回收。
+6. 停止其中一个 Realtime Gateway，确认另一个节点仍能接受连接和广播。
+7. 重启被停止的节点，客户端重连并按 afterId 补偿弹幕。
+8. 对比 Prometheus 的 published、dropped 和 local fallback 指标。
+
+## Redis Key 与 Lua 集成验证
+
+1. 使用 Testcontainers 启动与生产主版本一致的 Redis 7.4。
+2. 验证心跳 Lua 同时更新房间用户 ZSet 和用户连接 ZSet，并刷新两个 Key 的 TTL。
+3. 验证两个 nodeId 使用相同 connectionId 时不会覆盖。
+4. 验证在线状态和活动库存的多 Key 使用相同 Cluster Slot。
+5. 若生产启用 Redis Cluster，在真实 Cluster 环境重复执行脚本，确认不存在 CROSSSLOT。
 
 ## 对账 SQL
 

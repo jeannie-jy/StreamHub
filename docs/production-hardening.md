@@ -13,9 +13,9 @@ docker compose -f docker-compose.yml -f docker-compose.ha.yml up -d `
 
 `docker-compose.ha.yml` 会移除业务服务的宿主机端口映射，让前端 Nginx 通过 Docker DNS 访问服务名。Nginx 已启用 Docker 内置 DNS 的运行时解析，服务扩容后新请求可以重新解析到可用实例；已有 WebSocket 连接仍固定在原实例，节点摘除时由客户端重连。
 
-Live 节点必须使用不同的 `STREAMHUB_NODE_ID`。使用编排平台时应把 Pod/Task 名称注入该变量，不能让所有副本共享同一个节点 ID。
+`STREAMHUB_NODE_ID` 现在是可读的实例基础名，进程启动时会自动追加随机 boot UUID，最终形成 `nodeId:bootId`。因此多个副本即使共享基础名，连接 member 也不会冲突；在编排平台中仍建议注入 Pod/Task 名称，方便日志和 Redis 数据排障。
 
-Compose 默认会回退到容器的 `HOSTNAME` 作为节点 ID；如果通过外部环境显式设置 `STREAMHUB_NODE_ID`，扩容时必须保证每个副本的值不同。
+Compose 默认基础名为 `compose-live`，未配置时应用会优先使用容器 `HOSTNAME`，再回退为 `live`。同一实例重启后 boot UUID 会变化，旧连接只能等待 Presence TTL 清理，不会与新进程连接互相覆盖。
 
 这只是应用层多实例配置，不会自动消除 MySQL、Redis、RocketMQ、Nacos 和 SRS 的单点问题。生产环境仍需要对应的集群或托管高可用方案。
 
