@@ -85,7 +85,7 @@ StreamHub/
 | 前端 | Vue 3、TypeScript、Vite 6、Vue Router、Pinia | 页面、路由和状态管理 |
 | 前端组件与播放 | Naive UI、mpegts.js、VueUse、vue-i18n | UI、HTTP-FLV 播放、交互和多语言 |
 | 工程化 | Docker、Docker Compose、Nginx | 一键编排、镜像构建和前端反向代理 |
-| 监控与测试 | Actuator、Micrometer、Prometheus、Grafana、X-Trace-Id、可选 SkyWalking、JUnit、Vitest、Playwright、k6 | 指标、链路、面板、单元测试、E2E 和压测 |
+| 监控与测试 | Actuator、Micrometer、Prometheus、Grafana、X-Trace-Id、可选 SkyWalking、JUnit、Testcontainers、Vitest、Playwright、k6 | 指标、链路、面板、单元测试、真实 Redis 集成测试、E2E 和压测 |
 ## 三、亮点与难点
 
 ### 1. 音视频面与业务面分离
@@ -105,7 +105,22 @@ WebSocket 连接只保存在当前 Live 节点的内存注册表中。弹幕处�
 
 这样即使实时广播失败，已经落库的弹幕仍然可查询；当房间广播速率触顶时，也只是丢弃实时广播，不丢失历史记录。
 
-### 3. 虚拟礼物的幂等与最终一致性
+### 3. 多连接在线状态与心跳回收
+
+在线状态同时维护本地连接注册表和 Redis 两层 ZSet：
+
+- 房间级 `live:room:{roomId}:online` 以 `userId` 为 member，用于统计去重在线用户。
+- 用户级 `live:room:{roomId}:user:<userId>:connections` 以 `nodeId:bootId:connectionId` 为 member，用于区分多节点、多标签页连接。
+- `STREAMHUB_NODE_ID` 是便于排障的实例基础名，进程启动时会自动追加 boot UUID；即使多个副本使用相同基础名，连接 member 也不会冲突。
+- 心跳 Lua 原子更新两层 ZSet；关闭一条连接时，只有该用户不存在其他有效连接，才会从房间在线 ZSet 移除。
+
+房间 Key 中的 `{roomId}` 是实际 Redis Hash Tag，不是文档占位符，保证两层 ZSet 在 Redis Cluster 下位于同一个 Slot。
+
+客户端每 20 秒发送一次心跳，45 秒未收到 ACK 时主动重连；服务端每 15 秒扫描一次，关闭 75 秒没有心跳的连接。Redis Presence 有效期默认为 90 秒，相关 Key 的过期时间为 180 秒，因此异常退出后遗留的房间和连接 Key 最终会自动回收。
+
+Redis 不可用时，已建立的 WebSocket 连接仍可工作，在线人数退化为当前 Live 节点的本地去重人数，房间事件退化为本节点广播；跨节点实时广播需要等待 Redis 恢复，历史弹幕仍可从 MySQL 补偿。
+
+### 4. 虚拟礼物的幂等与最终一致性
 
 送礼接口不会同步完成扣款，而是先创建 PENDING 订单并投递 RocketMQ，消费者再执行扣款、收益入账、榜单更新和事件广播。
 
@@ -117,9 +132,11 @@ WebSocket 连接只保存在当前 Live 节点的内存注册表中。弹幕处�
 
 面试回答重点是：RocketMQ 提供异步化、削峰和重试，但不会自动提供 Redis 与 MySQL 之间的分布式事务，因此必须依赖唯一约束、状态机和对账补偿。
 
-### 4. 秒杀的原子预扣与异步削峰
+### 5. 秒杀的原子预扣与异步削峰
 
-秒杀请求在入口只做轻量鉴权，然后使用 Redis Lua 脚本在一次原子操作中完成：活动状态校验、库存扣减和一人一单校验。预扣成功后发送 CREATE 消息，接口立即返回 PENDING，由 RocketMQ 消费者异步创建 MySQL 订单。
+秒杀请求先从 MySQL 查询活动并校验状态、活动时间和用户已有订单，再使用 Redis Lua 脚本原子完成库存扣减和用户占位。预扣成功后创建 MySQL PENDING 订单并发送 CREATE、CLOSE 消息，由 RocketMQ 消费者异步处理订单和超时关闭。
+
+活动库存使用 `activity:{activityId}:stock`，用户占位使用 `activity:{activityId}:users`。花括号是实际 Redis Hash Tag，使两个 Key 在 Redis Cluster 下落入同一个 Slot，避免多 Key Lua 出现 `CROSSSLOT`；这只代表 Key 设计兼容 Cluster，不代表当前环境已经部署 Redis Cluster。
 
 订单流程还包含：
 
@@ -130,13 +147,13 @@ WebSocket 连接只保存在当前 Live 节点的内存注册表中。弹幕处�
 
 验证是否超卖时，不能只看接口返回值，还要同时核对 Redis 剩余库存、成功订单数量和成功用户集合，确保库存不为负且每个用户最多一笔成功订单。
 
-### 5. Token 鉴权与 WebSocket Ticket
+### 6. Token 鉴权与 WebSocket Ticket
 
 HTTP 写接口统一经过 API Gateway，并使用 Authorization: Bearer <accessToken>。Gateway 调用 Auth 服务进行 Token introspection 后，覆盖客户端传入的用户身份，避免信任外部伪造的 X-User-Id。
 
 WebSocket 连接先通过 /api/v1/auth/ws-ticket 获取短时有效的一次性 Ticket，再连接 Realtime Gateway。Ticket 被消费后才把可信用户 ID 注入 Live 服务，解决长连接场景下 Token 传递、复用和身份伪造问题。
 
-### 6. 可观测性与故障边界
+### 7. 可观测性与故障边界
 
 所有服务通过 Actuator 暴露健康检查和 Prometheus 指标。Gateway 会生成或透传 `X-Trace-Id`，并将其传播到 WebClient、Feign 和业务服务，统一响应中携带 traceId，便于从网关日志追踪到业务服务。Live 服务额外记录实时广播发布数、丢弃数和本地降级数。
 
@@ -157,7 +174,7 @@ Prometheus/Grafana 默认启用，用于指标、容量和告警；SkyWalking Ag
 | 追问 | 回答要点 |
 | --- | --- |
 | 为什么 WebSocket 不直接连接 Live 服务？ | 独立网关可以单独扩容连接层，集中处理鉴权和入口治理，业务节点只处理房间事件。 |
-| Redis 挂了会怎样？ | 在线状态和实时广播受影响；已落 MySQL 的弹幕可通过历史接口补偿，秒杀预扣失败则返回错误。 |
+| Redis 挂了会怎样？ | 已建立的 WebSocket 连接仍可使用，同节点事件降级为本地广播；跨节点 Pub/Sub 广播失效，在线人数退化为当前 Live 节点的本地去重人数。已落 MySQL 的弹幕可通过历史接口补偿，依赖 Redis Lua 的秒杀预扣不可用。 |
 | MQ 重复投递怎么办？ | 订单号、钱包流水业务号和 MySQL 唯一索引共同构成幂等边界。 |
 | 如何防止秒杀超卖？ | Redis Lua 原子预扣负责入口并发控制，MySQL 唯一索引负责最终落库，后台对账负责修复异常。 |
 | 如何定位慢请求？ | 用 traceId 关联网关与服务日志，结合 Actuator/Prometheus 的 p95、JVM、连接池、Redis、MQ 和慢 SQL 指标。 |
@@ -192,7 +209,7 @@ docker compose -f docker-compose.yml -f docker-compose.ha.yml up -d `
   --scale live-service=2
 ~~~
 
-该 overlay 只移除业务服务的宿主机端口映射并启用服务发现，不会自动消除 MySQL、Redis、RocketMQ、Nacos 和 SRS 的单点问题；完整说明见[生产化部署补强](docs/production-hardening.md)。
+该 overlay 只移除业务服务的宿主机端口映射并启用服务发现，不会自动消除 MySQL、Redis、RocketMQ、Nacos 和 SRS 的单点问题。当前 Redis 是单节点 Redis 7.4 + AOF + 持久化卷，不是 Sentinel 或 Cluster 高可用部署；完整说明见[生产化部署补强](docs/production-hardening.md)。
 
 检查容器状态：
 
@@ -224,7 +241,7 @@ docker compose logs -f gateway-service live-service realtime-gateway
 | localhost:8080 | SRS HTTP-FLV/HLS |
 | localhost:8000/udp | SRS WebRTC UDP |
 
-端口和本地凭据可在 .env 中覆盖，完整示例见 [.env.example](.env.example)。数据库迁移会在业务服务启动时由 Flyway 自动执行。
+端口和本地凭据可在 .env 中覆盖，完整示例见 [.env.example](.env.example)。`STREAMHUB_NODE_ID` 是 Live 实例的可读基础名，运行时还会追加随机 boot UUID。数据库迁移会在业务服务启动时由 Flyway 自动执行。
 
 如果前后端分域部署，需要将生产前端域名配置到 `STREAMHUB_ALLOWED_ORIGINS`；默认值仅包含本地 Vite 和前端 Nginx 地址。Gateway 的限流、超时、数据库连接池和 Redis 连接池参数也都可以通过 `.env` 覆盖。
 
@@ -306,6 +323,14 @@ npm run build
 cd ..
 mvn -B verify
 ~~~
+
+Live 服务还包含基于 Testcontainers 和 Redis 7.4 的集成测试，覆盖 Presence Lua、多节点连接隔离、连接回收和 Key TTL；Cluster Slot 单元测试同时验证在线状态与活动库存的多 Key 是否落在同一 Slot：
+
+~~~powershell
+mvn -pl live-service test
+~~~
+
+运行真实 Redis 集成测试需要 Docker daemon。Docker 未启动时，这两条容器测试会自动跳过，因此应检查 Maven 结果中的 `Skipped` 数量，不能只根据 `BUILD SUCCESS` 判断集成测试已经执行。
 
 ### 6. 停止服务
 
