@@ -121,6 +121,128 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "streamhub-prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "id": 5,
+      "title": "RocketMQ consumer lag",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "max by (consumer_group) (streamhub_mq_consumer_lag)",
+          "legendFormat": "{{consumer_group}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "streamhub-prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "id": 6,
+      "title": "MQ reliability backlog",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "max(streamhub_mq_outbox_pending)",
+          "legendFormat": "outbox pending",
+          "refId": "A"
+        },
+        {
+          "expr": "max(streamhub_mq_outbox_failed)",
+          "legendFormat": "outbox failed",
+          "refId": "B"
+        },
+        {
+          "expr": "max(streamhub_mq_deadletter_new)",
+          "legendFormat": "dead letters",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "streamhub-prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "id": 7,
+      "title": "MQ consume results",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (consumer_group, result) (rate(streamhub_mq_consume_total[5m]))",
+          "legendFormat": "{{consumer_group}} / {{result}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "streamhub-prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "id": 8,
+      "title": "Oldest pending outbox event",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "max(streamhub_mq_outbox_oldest_age_seconds)",
+          "legendFormat": "age",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "schemaVersion": 39,
@@ -130,5 +252,5 @@
   },
   "title": "StreamHub Overview",
   "uid": "streamhub-overview",
-  "version": 1
+  "version": 2
 }

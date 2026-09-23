@@ -32,6 +32,10 @@ public class OpsController {
     private final OpsAuditRepository opsAuditRepository;
     private final ContentModerationRepository contentModerationRepository;
     private final RoomMuteRepository roomMuteRepository;
+    private final MqDeadLetterRepository deadLetterRepository;
+    private final MqDeadLetterService deadLetterService;
+    private final MqOutboxRepository outboxRepository;
+    private final MqOutboxAdminService outboxAdminService;
 
     public OpsController(
             LiveRoomService liveRoomService,
@@ -43,7 +47,11 @@ public class OpsController {
             SensitiveWordService sensitiveWordService,
             OpsAuditRepository opsAuditRepository,
             ContentModerationRepository contentModerationRepository,
-            RoomMuteRepository roomMuteRepository) {
+            RoomMuteRepository roomMuteRepository,
+            MqDeadLetterRepository deadLetterRepository,
+            MqDeadLetterService deadLetterService,
+            MqOutboxRepository outboxRepository,
+            MqOutboxAdminService outboxAdminService) {
         this.liveRoomService = liveRoomService;
         this.liveRoomRepository = liveRoomRepository;
         this.giftOrderRepository = giftOrderRepository;
@@ -54,6 +62,10 @@ public class OpsController {
         this.opsAuditRepository = opsAuditRepository;
         this.contentModerationRepository = contentModerationRepository;
         this.roomMuteRepository = roomMuteRepository;
+        this.deadLetterRepository = deadLetterRepository;
+        this.deadLetterService = deadLetterService;
+        this.outboxRepository = outboxRepository;
+        this.outboxAdminService = outboxAdminService;
     }
 
     @GetMapping("/dashboard/summary")
@@ -133,6 +145,63 @@ public class OpsController {
         RequestUserRole.requireOperator(request);
         List<OpsAuditRepository.AuditLogView> items = opsAuditRepository.page(page, pageSize);
         return ApiResponse.success(PageResult.of(items, page, pageSize, opsAuditRepository.count()));
+    }
+
+    @GetMapping("/mq/dead-letters")
+    public ApiResponse<PageResult<MqDeadLetterRepository.DeadLetterMessage>> deadLetters(
+            @RequestParam(defaultValue = "") String status,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            HttpServletRequest request) {
+        RequestUserRole.requireOperator(request);
+        return ApiResponse.success(PageResult.of(
+                deadLetterRepository.page(status, page, pageSize),
+                Math.max(1, page),
+                Math.max(1, Math.min(pageSize, 100)),
+                deadLetterRepository.count(status)));
+    }
+
+    @PostMapping("/mq/dead-letters/{id}/replay")
+    public ApiResponse<MqDeadLetterRepository.DeadLetterMessage> replayDeadLetter(
+            @PathVariable long id,
+            @Valid @RequestBody ReasonRequest body,
+            HttpServletRequest request) {
+        long operatorId = RequestUserRole.requireOperator(request);
+        var result = deadLetterService.replay(id, operatorId, body.reason());
+        return ApiResponse.success(result);
+    }
+
+    @PostMapping("/mq/dead-letters/{id}/ignore")
+    public ApiResponse<MqDeadLetterRepository.DeadLetterMessage> ignoreDeadLetter(
+            @PathVariable long id,
+            @Valid @RequestBody ReasonRequest body,
+            HttpServletRequest request) {
+        long operatorId = RequestUserRole.requireOperator(request);
+        var result = deadLetterService.ignore(id, operatorId, body.reason());
+        return ApiResponse.success(result);
+    }
+
+    @GetMapping("/mq/outbox")
+    public ApiResponse<PageResult<MqOutboxRepository.OutboxEntry>> outbox(
+            @RequestParam(defaultValue = "") String status,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            HttpServletRequest request) {
+        RequestUserRole.requireOperator(request);
+        return ApiResponse.success(PageResult.of(
+                outboxRepository.page(status, page, pageSize),
+                Math.max(1, page),
+                Math.max(1, Math.min(pageSize, 100)),
+                outboxRepository.count(status)));
+    }
+
+    @PostMapping("/mq/outbox/{id}/retry")
+    public ApiResponse<MqOutboxRepository.OutboxEntry> retryOutbox(
+            @PathVariable long id,
+            @Valid @RequestBody ReasonRequest body,
+            HttpServletRequest request) {
+        long operatorId = RequestUserRole.requireOperator(request);
+        return ApiResponse.success(outboxAdminService.retry(id, operatorId, body.reason()));
     }
 
     @GetMapping("/moderation-logs")
