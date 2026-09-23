@@ -30,6 +30,29 @@ Invoke-RestMethod http://localhost:8083/actuator/health
 3. 在 RocketMQ 消费期间停止 Live 服务，制造消费积压，再启动服务。
 4. 观察订单从 PENDING 变为 SUCCESS 或符合业务规则的 FAILED。
 5. 将同一消息重新投递或等待重试，确认钱包流水和订单没有重复写入。
+6. 停止 RocketMQ Broker 后创建订单，确认订单和 `mq_outbox` 同时提交且 Outbox 保持 PENDING；恢复 Broker 后确认事件变为 SENT、订单最终完成。
+7. 构造永久非法消息或让消费连续失败超过 `ROCKETMQ_MAX_RECONSUME_TIMES`，确认消息进入 `mq_dead_letter`，并在运营接口执行重放或忽略。
+
+关键指标：
+
+~~~text
+streamhub_mq_consumer_lag
+streamhub_mq_outbox_pending
+streamhub_mq_outbox_failed
+streamhub_mq_outbox_oldest_age_seconds
+streamhub_mq_deadletter_new
+streamhub_mq_consume_total
+~~~
+
+运营接口需要 OPERATOR 权限：
+
+~~~text
+GET  /api/v1/ops/mq/dead-letters?status=NEW
+POST /api/v1/ops/mq/dead-letters/{id}/replay
+POST /api/v1/ops/mq/dead-letters/{id}/ignore
+GET  /api/v1/ops/mq/outbox?status=FAILED
+POST /api/v1/ops/mq/outbox/{id}/retry
+~~~
 
 记录：
 

@@ -22,6 +22,8 @@
 | 2026-09-10 | a359c6b | Redis 派生数据损坏 | 将活动 5 库存改为 999、删除榜单，等待约 8s | 对账任务恢复库存 1、用户集合 9 人和贡献榜；日志记录 `repairedActivities=5/6` |
 | 2026-09-11 | a359c6b | Live-B 节点摘除与重启 | 停止 8093，确认 A 节点 8083 健康后重启 B | A 节点持续返回 200，B 节点恢复 200，客户端可重新连接并用历史接口补偿 |
 | 2026-09-11 | a359c6b | RocketMQ 中断后的 PENDING 重试 | 停止 broker，制造活动 6 的 PENDING 订单 `drill-mq-1789056048130`，再启动 broker | 订单最终为 SUCCESS；CREATE/CLOSE 出现重复投递，订单和库存处理保持幂等 |
+| 2026-09-23 | working tree | Outbox 在 Broker 中断后的自动补发 | 停止 broker 后创建礼物订单 `mq-e2e-gift-1790160635300`；确认订单与 Outbox 均为 PENDING，再恢复 broker | Outbox 经 9 次尝试后为 SENT，订单为 SUCCESS；测试用户余额 5→4、主播余额 998→999，无人工补偿 |
+| 2026-09-23 | working tree | 永久非法消息及 Broker DLQ 隔离 | 投递空白业务消息和 `%DLQ%streamhub-gift-consumer` 测试消息，随后通过运营接口查询并忽略 | 两条消息均写入 `mq_dead_letter`；分别记录永久参数错误和“RocketMQ 重试次数耗尽”，状态 NEW→IGNORED，审计日志完整 |
 
 ## 验收检查
 
@@ -33,3 +35,5 @@
 本次结果使用 Docker Desktop 中的 grafana/k6:0.53.0，秒杀通过 USER_IDS=1,2,3,4,5,6,7,8,9 访问 Live 内部端口 8083，WebSocket 直接访问 8083；业务 Token 鉴权已通过 Gateway 闭环单独验证。
 
 故障演练使用双 Live 实例、Redis 7.4、RocketMQ 5.3.1 和自动对账任务临时参数 `fixed-delay-ms=5000`、`pending-age-ms=0`，以缩短本地验证等待时间。生产环境应恢复默认周期，并把演练中的订单号、指标和日志 traceId 保存到变更记录。
+
+2026-09-23 演练同时发现 Compose Broker 原先向 NameServer 注册 `127.0.0.1:10911`，导致容器内生产者无法连接。`brokerIP1` 已改为 Compose DNS 名 `rocketmq-broker`，集群路由核验为 `rocketmq-broker:10911`。

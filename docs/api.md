@@ -129,3 +129,15 @@ Authorization: Bearer <accessToken>
 ~~~
 
 Redis Lua 脚本同时完成活动状态、库存和一人一单校验；RocketMQ 异步创建订单，延迟消息关闭超时订单。MySQL 唯一索引是最终幂等边界。
+
+## MQ 运维
+
+以下接口仅允许运营角色访问。重放、忽略和重试请求体均为 `{"reason":"处理原因"}`，操作会写入审计日志。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | /api/v1/ops/mq/dead-letters?status=NEW&page=1&pageSize=20 | 查询死信 |
+| POST | /api/v1/ops/mq/dead-letters/{id}/replay | 将死信重新写入 Outbox |
+| POST | /api/v1/ops/mq/dead-letters/{id}/ignore | 确认忽略死信 |
+| GET | /api/v1/ops/mq/outbox?status=FAILED&page=1&pageSize=20 | 查询 Outbox |
+| POST | /api/v1/ops/mq/outbox/{id}/retry | 重置失败 Outbox 并重新投递 |

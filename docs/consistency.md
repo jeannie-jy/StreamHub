@@ -7,8 +7,8 @@ MySQL 是业务事实来源，Redis 是热点状态和派生数据，RocketMQ �
 | 数据 | 来源 | 丢失后的处理 |
 | --- | --- | --- |
 | 钱包余额和流水 | MySQL | 以唯一业务号重放或人工对账 |
-| 礼物订单 | MySQL + RocketMQ | 订单保持 PENDING，消费重试 |
-| 活动订单 | MySQL + RocketMQ | CREATE 重试，失败时回补 Redis 库存 |
+| 礼物订单 | MySQL + Outbox + RocketMQ | 订单与 Outbox 同事务提交，投递和消费均可重试 |
+| 活动订单 | MySQL + Outbox + RocketMQ | CREATE/CLOSE 可靠投递，失败时回补 Redis 库存 |
 | 活动预扣库存 | Redis | 以订单状态和活动库存对账并回补 |
 | 榜单 | Redis ZSet | 从成功订单重建 |
 | 在线人数 | Redis 两层 ZSet | 连接心跳过期清理，Redis 故障时退化为本节点去重用户数 |
@@ -16,7 +16,7 @@ MySQL 是业务事实来源，Redis 是热点状态和派生数据，RocketMQ �
 
 ## 礼物处理
 
-1. API 层使用 clientOrderNo 查询重复订单；新请求只插入一条 PENDING 订单。
+1. API 层使用 clientOrderNo 查询重复订单；新请求在同一个 MySQL 事务中插入 PENDING 订单和 Outbox 事件。
 2. 消费者以订单号读取订单，钱包扣款和流水写入使用唯一 biz_no。
 3. 已处理的订单直接返回已有结果，重复 MQ 投递不会再次扣款。
 4. 扣款成功后写主播收益和 SUCCESS；失败则写 FAILED，余额不足不重试。
@@ -25,12 +25,14 @@ MySQL 是业务事实来源，Redis 是热点状态和派生数据，RocketMQ �
 ## 活动订单处理
 
 1. Lua 脚本在 Redis 中原子完成活动状态、库存和用户占位。
-2. API 发送 CREATE|orderNo，消费者使用 MySQL 唯一键创建订单。
+2. API 在订单事务中写入 CREATE 与延迟 CLOSE Outbox 事件，后台投递器再发送 RocketMQ；消费者使用 MySQL 唯一键和条件状态更新保持幂等。
 3. CREATE 消费失败返回 RocketMQ 重试；超过重试上限后，需要按订单和 Redis 预扣记录执行补偿。
 4. 延迟消息发送 CLOSE|orderNo。订单仍为待处理或待支付时关闭并回补库存，已成功的订单不回补。
 5. 对账时比较活动总库存、Redis 剩余库存、成功/关闭订单数量和异常占位用户。
 
-当前实现已经提供重试、延迟关闭、回补和定时对账任务。对账任务会在多实例之间通过 Redis 锁选出一个执行者，重试过期 PENDING 订单、重建礼物榜并修复活动库存和用户占位。死信队列接入和人工补偿审批仍属于后续增强，演练步骤见 fault-drills.md。
+当前实现已经提供事务 Outbox、生产重试、消费重试、延迟关闭、死信持久化、人工重放/忽略和定时对账。Outbox 使用事件唯一键避免重复创建，多实例投递器通过条件更新竞争事件；发送结果不确定时允许重复投递，由订单状态和业务唯一键消除副作用。消费重试耗尽后，RocketMQ 死信由独立消费者写入 `mq_dead_letter`，运营操作与审计日志在同一事务中提交。
+
+Prometheus 暴露 Consumer Group lag、Outbox 待投递数/失败数/最老年龄、待处理死信数、消费结果和观察到的重试次数。告警规则位于 `infra/prometheus/alerts.yml`；生产环境还需在 Prometheus/Alertmanager 中配置实际通知接收器。
 
 活动库存和用户集合使用 `activity:{activityId}:stock` 与 `activity:{activityId}:users`。花括号是实际 Redis Hash Tag，保证多 Key Lua 在 Redis Cluster 下位于同一个 Slot。Redis 内部原子性不能替代 Redis 与 MySQL 之间的对账补偿。
 

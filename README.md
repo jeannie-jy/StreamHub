@@ -78,9 +78,9 @@ StreamHub/
 | 服务间调用 | OpenFeign、Feign HC5、连接池和超时配置 | Live 服务校验用户、复用 HTTP 连接和服务间访问 |
 | 实时通信 | Spring WebSocket、WebSocket Gateway | 弹幕、礼物和活动事件实时下发 |
 | 数据库 | MySQL 8.4、Spring JDBC、HikariCP | 业务事实、订单、钱包流水和历史消息 |
-| 数据库变更 | Flyway | 按版本执行数据库迁移，当前包含 V1 至 V6 |
+| 数据库变更 | Flyway | 按版本执行数据库迁移，当前包含 V1 至 V7 |
 | 缓存与高并发 | Redis 7.4、Redis Lua、ZSet、Pub/Sub | 在线状态、榜单、库存、限流和跨节点广播 |
-| 异步消息 | Apache RocketMQ 5.3.1 | 礼物/活动订单异步处理、重试和延迟关闭 |
+| 异步消息 | Apache RocketMQ 5.3.1 | 礼物/活动订单异步处理、事务 Outbox、延时消息、消费重试和死信隔离 |
 | 音视频 | SRS 6、RTMP、WebRTC、HTTP-FLV、HLS | 推流、播放和 WebRTC 信令 |
 | 前端 | Vue 3、TypeScript、Vite 6、Vue Router、Pinia | 页面、路由和状态管理 |
 | 前端组件与播放 | Naive UI、mpegts.js、VueUse、vue-i18n | UI、HTTP-FLV 播放、交互和多语言 |
@@ -122,7 +122,7 @@ Redis 不可用时，已建立的 WebSocket 连接仍可工作，在线人数退
 
 ### 4. 虚拟礼物的幂等与最终一致性
 
-送礼接口不会同步完成扣款，而是先创建 PENDING 订单并投递 RocketMQ，消费者再执行扣款、收益入账、榜单更新和事件广播。
+送礼接口不会同步完成扣款，而是在同一个 MySQL 事务中创建 PENDING 订单和 Outbox 事件。后台投递器把事件发送到 RocketMQ，消费者再执行扣款、收益入账、榜单更新和事件广播；Broker 暂时不可用不会造成订单与消息永久分离。
 
 幂等边界分为三层：
 
@@ -134,7 +134,7 @@ Redis 不可用时，已建立的 WebSocket 连接仍可工作，在线人数退
 
 ### 5. 秒杀的原子预扣与异步削峰
 
-秒杀请求先从 MySQL 查询活动并校验状态、活动时间和用户已有订单，再使用 Redis Lua 脚本原子完成库存扣减和用户占位。预扣成功后创建 MySQL PENDING 订单并发送 CREATE、CLOSE 消息，由 RocketMQ 消费者异步处理订单和超时关闭。
+秒杀请求先从 MySQL 查询活动并校验状态、活动时间和用户已有订单，再使用 Redis Lua 脚本原子完成库存扣减和用户占位。预扣成功后在同一个 MySQL 事务中创建 PENDING 订单以及 CREATE、延迟 CLOSE Outbox 事件，由 RocketMQ 消费者异步处理订单和超时关闭。
 
 活动库存使用 `activity:{activityId}:stock`，用户占位使用 `activity:{activityId}:users`。花括号是实际 Redis Hash Tag，使两个 Key 在 Redis Cluster 下落入同一个 Slot，避免多 Key Lua 出现 `CROSSSLOT`；这只代表 Key 设计兼容 Cluster，不代表当前环境已经部署 Redis Cluster。
 
@@ -144,6 +144,7 @@ Redis 不可用时，已建立的 WebSocket 连接仍可工作，在线人数退
 - RocketMQ 延迟消息发送 CLOSE，关闭超时订单并回补库存。
 - 定时对账任务比较 Redis 库存、用户占位和 MySQL 订单状态，修复异常数据。
 - 对账任务使用 Redis 锁在多实例之间选出一个执行者，避免重复修复。
+- 消费重试耗尽后持久化死信，运营人员可审计地重放或忽略；Outbox 重试耗尽后也可人工恢复。
 
 验证是否超卖时，不能只看接口返回值，还要同时核对 Redis 剩余库存、成功订单数量和成功用户集合，确保库存不为负且每个用户最多一笔成功订单。
 
@@ -155,9 +156,9 @@ WebSocket 连接先通过 /api/v1/auth/ws-ticket 获取短时有效的一次性 
 
 ### 7. 可观测性与故障边界
 
-所有服务通过 Actuator 暴露健康检查和 Prometheus 指标。Gateway 会生成或透传 `X-Trace-Id`，并将其传播到 WebClient、Feign 和业务服务，统一响应中携带 traceId，便于从网关日志追踪到业务服务。Live 服务额外记录实时广播发布数、丢弃数和本地降级数。
+所有服务通过 Actuator 暴露健康检查和 Prometheus 指标。Gateway 会生成或透传 `X-Trace-Id`，并将其传播到 WebClient、Feign 和业务服务，统一响应中携带 traceId，便于从网关日志追踪到业务服务。Live 服务额外记录实时广播发布数、丢弃数和本地降级数，以及 Consumer Group 积压、Outbox 待投递数/失败数/最老积压时间、待处理死信数、消费结果和观察到的重试次数。
 
-Prometheus/Grafana 默认启用，用于指标、容量和告警；SkyWalking Agent 需要额外提供 Agent JAR 和 OAP 地址，通过 `SKYWALKING_AGENT_PATH` 可选启用，详见[生产化部署补强](docs/production-hardening.md)。
+Prometheus/Grafana 默认启用，用于指标、容量和告警；MQ 告警规则位于 `infra/prometheus/alerts.yml`，生产环境还需要配置 Alertmanager 通知接收器。SkyWalking Agent 需要额外提供 Agent JAR 和 OAP 地址，通过 `SKYWALKING_AGENT_PATH` 可选启用，详见[生产化部署补强](docs/production-hardening.md)。
 
 项目对组件职责进行了明确划分：
 
@@ -241,7 +242,7 @@ docker compose logs -f gateway-service live-service realtime-gateway
 | localhost:8080 | SRS HTTP-FLV/HLS |
 | localhost:8000/udp | SRS WebRTC UDP |
 
-端口和本地凭据可在 .env 中覆盖，完整示例见 [.env.example](.env.example)。`STREAMHUB_NODE_ID` 是 Live 实例的可读基础名，运行时还会追加随机 boot UUID。数据库迁移会在业务服务启动时由 Flyway 自动执行。
+端口、本地凭据以及 RocketMQ 消费线程、最大重试次数、Outbox 调度等参数可在 .env 中覆盖，完整示例见 [.env.example](.env.example)。`STREAMHUB_NODE_ID` 是 Live 实例的可读基础名，运行时还会追加随机 boot UUID。数据库迁移会在业务服务启动时由 Flyway 自动执行。
 
 如果前后端分域部署，需要将生产前端域名配置到 `STREAMHUB_ALLOWED_ORIGINS`；默认值仅包含本地 Vite 和前端 Nginx 地址。Gateway 的限流、超时、数据库连接池和 Redis 连接池参数也都可以通过 `.env` 覆盖。
 
@@ -281,6 +282,8 @@ Invoke-RestMethod "http://localhost:8088/api/v1/live/rooms/$roomId/start" -Metho
 ~~~powershell
 docker compose up -d mysql redis rocketmq-namesrv rocketmq-broker nacos srs
 ~~~
+
+Compose 中的 RocketMQ Broker 默认向 NameServer 注册为 `rocketmq-broker:10911`，以保证容器内服务可以通过 Compose DNS 访问。若 Java 服务直接运行在宿主机，需要确保宿主机能够解析 `rocketmq-broker`（例如配置本机 hosts），否则生产者虽然能连接 `localhost:9876` 的 NameServer，却无法连接其返回的 Broker 地址。
 
 在五个终端分别启动服务：
 

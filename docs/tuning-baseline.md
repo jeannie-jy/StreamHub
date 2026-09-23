@@ -32,6 +32,8 @@ ORDER BY id;
 
 当前业务服务使用 Spring Boot 默认 Hikari 连接池，没有为了本地压测伪造一个生产容量值；可通过 Actuator、JMX 或启动日志记录实际连接池配置。调整时应同时观察 MySQL 活跃连接、请求 p95、线程池队列和 RocketMQ 消费延迟。
 
+Live 服务的礼物和活动 Consumer 默认分别使用 4 到 8 个消费线程、单次消费 1 条消息，最大重试次数为 5。调整 `ROCKETMQ_CONSUME_THREAD_MIN/MAX` 时，应同时观察 `streamhub_mq_consumer_lag`、数据库连接池等待、消费失败率和 Outbox 最老事件年龄，不能只通过增加线程掩盖下游数据库瓶颈。
+
 常用检查命令：
 
 ~~~powershell
