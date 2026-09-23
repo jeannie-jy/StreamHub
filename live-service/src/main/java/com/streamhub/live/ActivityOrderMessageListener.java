@@ -16,17 +16,27 @@ public class ActivityOrderMessageListener implements MessageListenerConcurrently
     private static final Logger log = LoggerFactory.getLogger(ActivityOrderMessageListener.class);
 
     private final ActivityService activityService;
+    private final RocketMqProperties properties;
+    private final MqDeadLetterService deadLetterService;
+    private final MqMetrics metrics;
 
-    public ActivityOrderMessageListener(ActivityService activityService) {
+    public ActivityOrderMessageListener(
+            ActivityService activityService,
+            RocketMqProperties properties,
+            MqDeadLetterService deadLetterService,
+            MqMetrics metrics) {
         this.activityService = activityService;
+        this.properties = properties;
+        this.deadLetterService = deadLetterService;
+        this.metrics = metrics;
     }
 
     @Override
     public ConsumeConcurrentlyStatus consumeMessage(
             List<MessageExt> messages,
             ConsumeConcurrentlyContext context) {
-        try {
-            for (MessageExt message : messages) {
+        for (MessageExt message : messages) {
+            try {
                 String body = new String(message.getBody(), StandardCharsets.UTF_8);
                 int separator = body.indexOf('|');
                 if (separator <= 0 || separator == body.length() - 1) {
@@ -42,11 +52,16 @@ public class ActivityOrderMessageListener implements MessageListenerConcurrently
                 } else {
                     throw new IllegalArgumentException("未知活动消息类型: " + type);
                 }
+                metrics.recordConsume(properties.getActivityConsumerGroup(), "success", message.getReconsumeTimes());
+            } catch (IllegalArgumentException exception) {
+                deadLetterService.capturePermanentFailure(properties.getActivityConsumerGroup(), message, exception);
+                metrics.recordConsume(properties.getActivityConsumerGroup(), "quarantined", message.getReconsumeTimes());
+            } catch (RuntimeException exception) {
+                metrics.recordConsume(properties.getActivityConsumerGroup(), "failure", message.getReconsumeTimes());
+                log.warn("活动订单消息消费失败，将等待 RocketMQ 重试", exception);
+                return ConsumeConcurrentlyStatus.RECONSUME_LATER;
             }
-            return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
-        } catch (RuntimeException exception) {
-            log.warn("活动订单消息消费失败，将等待 RocketMQ 重试", exception);
-            return ConsumeConcurrentlyStatus.RECONSUME_LATER;
         }
+        return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
     }
 }

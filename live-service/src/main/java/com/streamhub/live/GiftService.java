@@ -1,19 +1,14 @@
 package com.streamhub.live;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.time.Instant;
 
 import com.streamhub.common.api.BusinessException;
 import com.streamhub.common.api.ErrorCode;
 import com.streamhub.common.api.PageResult;
-import org.apache.rocketmq.client.producer.DefaultMQProducer;
-import org.apache.rocketmq.common.message.Message;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Service;
@@ -29,8 +24,8 @@ public class GiftService {
     private final GiftOrderRepository giftOrderRepository;
     private final WalletRepository walletRepository;
     private final LiveRoomRepository liveRoomRepository;
-    private final DefaultMQProducer giftOrderProducer;
     private final RocketMqProperties rocketMqProperties;
+    private final MqOutboxRepository outboxRepository;
     private final StringRedisTemplate stringRedisTemplate;
     private final RoomWebSocketHandler roomWebSocketHandler;
 
@@ -39,16 +34,16 @@ public class GiftService {
             GiftOrderRepository giftOrderRepository,
             WalletRepository walletRepository,
             LiveRoomRepository liveRoomRepository,
-            @Qualifier("giftOrderProducer") DefaultMQProducer giftOrderProducer,
             RocketMqProperties rocketMqProperties,
+            MqOutboxRepository outboxRepository,
             StringRedisTemplate stringRedisTemplate,
             RoomWebSocketHandler roomWebSocketHandler) {
         this.giftCatalogRepository = giftCatalogRepository;
         this.giftOrderRepository = giftOrderRepository;
         this.walletRepository = walletRepository;
         this.liveRoomRepository = liveRoomRepository;
-        this.giftOrderProducer = giftOrderProducer;
         this.rocketMqProperties = rocketMqProperties;
+        this.outboxRepository = outboxRepository;
         this.stringRedisTemplate = stringRedisTemplate;
         this.roomWebSocketHandler = roomWebSocketHandler;
     }
@@ -79,6 +74,7 @@ public class GiftService {
         return new WalletView(userId, next);
     }
 
+    @Transactional
     public GiftOrderView placeOrder(long roomId, long senderId, String giftCode, int quantity, String clientOrderNo) {
         LiveRoom room = liveRoomRepository.findById(roomId).orElseThrow(
                 () -> new BusinessException(ErrorCode.NOT_FOUND, "直播间不存在"));
@@ -102,30 +98,24 @@ public class GiftService {
                 throw new BusinessException(ErrorCode.INVALID_ARGUMENT, "clientOrderNo 已被其他订单使用");
             }
             if ("PENDING".equals(order.status())) {
-                sendOrderMessage(orderNo);
+                enqueueOrderMessage(orderNo);
+                outboxRepository.requeue(giftOutboxKey(orderNo));
             }
             return GiftOrderView.from(order);
         }
 
-        try {
-            sendOrderMessage(orderNo);
-        } catch (Exception exception) {
-            giftOrderRepository.markFailed(orderNo, "消息投递失败");
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "礼物订单投递失败");
-        }
+        enqueueOrderMessage(orderNo);
         return GiftOrderView.from(order);
     }
 
-    private void sendOrderMessage(String orderNo) {
-        try {
-            Message message = new Message(
-                    rocketMqProperties.getGiftTopic(),
-                    orderNo.getBytes(StandardCharsets.UTF_8));
-            message.setKeys(orderNo);
-            giftOrderProducer.send(message);
-        } catch (Exception exception) {
-            throw new IllegalStateException("礼物订单消息投递失败", exception);
-        }
+    private void enqueueOrderMessage(String orderNo) {
+        outboxRepository.enqueue(
+                giftOutboxKey(orderNo),
+                rocketMqProperties.getGiftTopic(),
+                "GIFT_ORDER",
+                orderNo,
+                orderNo,
+                0);
     }
 
     public GiftOrderView findOrder(String orderNo) {
@@ -151,7 +141,8 @@ public class GiftService {
         int retried = 0;
         for (GiftOrder order : giftOrderRepository.findPendingOlderThan(createdBefore, limit)) {
             try {
-                sendOrderMessage(order.orderNo());
+                enqueueOrderMessage(order.orderNo());
+                outboxRepository.requeue(giftOutboxKey(order.orderNo()));
                 retried++;
             } catch (RuntimeException exception) {
                 log.warn("补偿礼物订单消息失败 orderNo={}", order.orderNo(), exception);
@@ -278,6 +269,10 @@ public class GiftService {
 
     private String rankKey(long roomId, String rankType) {
         return "live:room:" + roomId + ":rank:" + rankType;
+    }
+
+    private String giftOutboxKey(String orderNo) {
+        return "gift:process:" + orderNo;
     }
 
     private long addExact(long left, long right, String message) {

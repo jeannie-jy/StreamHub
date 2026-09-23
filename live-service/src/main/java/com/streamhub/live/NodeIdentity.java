@@ -2,6 +2,7 @@ package com.streamhub.live;
 
 import java.util.UUID;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -10,6 +11,7 @@ import org.springframework.util.StringUtils;
 public final class NodeIdentity {
     private final String value;
 
+    @Autowired
     public NodeIdentity(@Value("${streamhub.realtime.node-id:}") String configuredNodeId) {
         this(configuredNodeId, UUID.randomUUID().toString());
     }

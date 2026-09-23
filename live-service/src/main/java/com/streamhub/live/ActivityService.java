@@ -1,6 +1,5 @@
 package com.streamhub.live;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -8,14 +7,14 @@ import java.util.Map;
 import com.streamhub.common.api.BusinessException;
 import com.streamhub.common.api.ErrorCode;
 import com.streamhub.common.api.PageResult;
-import org.apache.rocketmq.client.producer.DefaultMQProducer;
-import org.apache.rocketmq.common.message.Message;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.script.RedisScript;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class ActivityService {
@@ -42,7 +41,7 @@ public class ActivityService {
     private final LiveRoomRepository liveRoomRepository;
     private final StringRedisTemplate stringRedisTemplate;
     private final RocketMqProperties rocketMqProperties;
-    private final DefaultMQProducer activityOrderProducer;
+    private final MqOutboxRepository outboxRepository;
     private final RoomWebSocketHandler roomWebSocketHandler;
 
     public ActivityService(
@@ -51,14 +50,14 @@ public class ActivityService {
             LiveRoomRepository liveRoomRepository,
             StringRedisTemplate stringRedisTemplate,
             RocketMqProperties rocketMqProperties,
-            @Qualifier("activityOrderProducer") DefaultMQProducer activityOrderProducer,
+            MqOutboxRepository outboxRepository,
             RoomWebSocketHandler roomWebSocketHandler) {
         this.activityRepository = activityRepository;
         this.activityOrderRepository = activityOrderRepository;
         this.liveRoomRepository = liveRoomRepository;
         this.stringRedisTemplate = stringRedisTemplate;
         this.rocketMqProperties = rocketMqProperties;
-        this.activityOrderProducer = activityOrderProducer;
+        this.outboxRepository = outboxRepository;
         this.roomWebSocketHandler = roomWebSocketHandler;
     }
 
@@ -124,6 +123,7 @@ public class ActivityService {
         activityRepository.appendAudit(operatorId, action, targetType, targetId, reason);
     }
 
+    @Transactional
     public ActivityOrderView seckill(long activityId, long userId, String clientOrderNo) {
         Activity activity = findActivity(activityId);
         if (!"ACTIVE".equals(activity.status())) {
@@ -135,6 +135,12 @@ public class ActivityService {
         }
         var existingOrder = activityOrderRepository.findByActivityAndUser(activityId, userId);
         if (existingOrder.isPresent()) {
+            if ("PENDING".equals(existingOrder.get().status())) {
+                enqueueMessage("CREATE", existingOrder.get().orderNo(), 0);
+                enqueueMessage("CLOSE", existingOrder.get().orderNo(), rocketMqProperties.getTimeoutDelayLevel());
+                outboxRepository.requeue(activityOutboxKey("CREATE", existingOrder.get().orderNo()));
+                outboxRepository.requeue(activityOutboxKey("CLOSE", existingOrder.get().orderNo()));
+            }
             return ActivityOrderView.from(existingOrder.get());
         }
 
@@ -150,6 +156,7 @@ public class ActivityService {
         if (remaining == STOCK_NOT_ENOUGH) {
             throw new BusinessException(ErrorCode.INVALID_ARGUMENT, "活动库存不足");
         }
+        registerReservationRollbackOnTransactionFailure(activityId, userId);
 
         String orderNo = clientOrderNo.trim();
         boolean created = activityOrderRepository.createPending(orderNo, activityId, userId);
@@ -162,12 +169,11 @@ public class ActivityService {
         }
 
         try {
-            sendMessage("CREATE", orderNo, 0);
-            sendMessage("CLOSE", orderNo, rocketMqProperties.getTimeoutDelayLevel());
-        } catch (Exception exception) {
+            enqueueMessage("CREATE", orderNo, 0);
+            enqueueMessage("CLOSE", orderNo, rocketMqProperties.getTimeoutDelayLevel());
+        } catch (RuntimeException exception) {
             rollbackReservation(activityId, userId);
-            activityOrderRepository.closeIfPending(orderNo);
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "秒杀订单投递失败");
+            throw exception;
         }
         return activityOrderRepository.findByOrderNo(orderNo)
                 .map(ActivityOrderView::from)
@@ -189,8 +195,10 @@ public class ActivityService {
         int retried = 0;
         for (ActivityOrder order : activityOrderRepository.findPendingOlderThan(createdBefore, limit)) {
             try {
-                sendMessage("CREATE", order.orderNo(), 0);
-                sendMessage("CLOSE", order.orderNo(), rocketMqProperties.getTimeoutDelayLevel());
+                enqueueMessage("CREATE", order.orderNo(), 0);
+                enqueueMessage("CLOSE", order.orderNo(), rocketMqProperties.getTimeoutDelayLevel());
+                outboxRepository.requeue(activityOutboxKey("CREATE", order.orderNo()));
+                outboxRepository.requeue(activityOutboxKey("CLOSE", order.orderNo()));
                 retried++;
             } catch (RuntimeException exception) {
                 log.warn("补偿活动订单消息失败 orderNo={}", order.orderNo(), exception);
@@ -246,15 +254,18 @@ public class ActivityService {
         return true;
     }
 
-    private void sendMessage(String type, String orderNo, int delayLevel) throws Exception {
-        Message message = new Message(
+    private void enqueueMessage(String type, String orderNo, int delayLevel) {
+        outboxRepository.enqueue(
+                activityOutboxKey(type, orderNo),
                 rocketMqProperties.getActivityTopic(),
-                (type + "|" + orderNo).getBytes(StandardCharsets.UTF_8));
-        message.setKeys(orderNo);
-        if (delayLevel > 0) {
-            message.setDelayTimeLevel(delayLevel);
-        }
-        activityOrderProducer.send(message);
+                type,
+                orderNo,
+                type + "|" + orderNo,
+                delayLevel);
+    }
+
+    private String activityOutboxKey(String type, String orderNo) {
+        return "activity:" + type.toLowerCase() + ":" + orderNo;
     }
 
     private void rollbackReservation(long activityId, long userId) {
@@ -262,6 +273,26 @@ public class ActivityService {
                 ROLLBACK_SCRIPT,
                 List.of(stockKey(activityId), userKey(activityId)),
                 String.valueOf(userId));
+    }
+
+    private void registerReservationRollbackOnTransactionFailure(long activityId, long userId) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status == TransactionSynchronization.STATUS_COMMITTED) {
+                    return;
+                }
+                try {
+                    rollbackReservation(activityId, userId);
+                } catch (RuntimeException exception) {
+                    log.error("数据库事务回滚后恢复 Redis 活动预占失败 activityId={} userId={}",
+                            activityId, userId, exception);
+                }
+            }
+        });
     }
 
     private void broadcastOrder(ActivityOrder order, String status) {

@@ -95,3 +95,18 @@ streamhub:
     activity-producer-group: ${ROCKETMQ_ACTIVITY_PRODUCER_GROUP:streamhub-activity-producer}
     activity-consumer-group: ${ROCKETMQ_ACTIVITY_CONSUMER_GROUP:streamhub-activity-consumer-v2}
     timeout-delay-level: ${ROCKETMQ_ACTIVITY_TIMEOUT_DELAY_LEVEL:3}
+    consume-thread-min: ${ROCKETMQ_CONSUME_THREAD_MIN:4}
+    consume-thread-max: ${ROCKETMQ_CONSUME_THREAD_MAX:8}
+    consume-message-batch-max-size: ${ROCKETMQ_CONSUME_BATCH_MAX_SIZE:1}
+    max-reconsume-times: ${ROCKETMQ_MAX_RECONSUME_TIMES:5}
+    producer-retry-times: ${ROCKETMQ_PRODUCER_RETRY_TIMES:2}
+    dead-letter-enabled: ${ROCKETMQ_DEAD_LETTER_ENABLED:true}
+    dead-letter-consumer-group: ${ROCKETMQ_DEAD_LETTER_CONSUMER_GROUP:streamhub-dead-letter-auditor}
+    outbox-enabled: ${ROCKETMQ_OUTBOX_ENABLED:true}
+    outbox-batch-size: ${ROCKETMQ_OUTBOX_BATCH_SIZE:100}
+    outbox-max-attempts: ${ROCKETMQ_OUTBOX_MAX_ATTEMPTS:20}
+    outbox-base-retry-delay-ms: ${ROCKETMQ_OUTBOX_BASE_RETRY_DELAY_MS:1000}
+    outbox-fixed-delay-ms: ${ROCKETMQ_OUTBOX_FIXED_DELAY_MS:500}
+    metrics-refresh-ms: ${ROCKETMQ_METRICS_REFRESH_MS:15000}
+    lag-monitor-initial-delay-ms: ${ROCKETMQ_LAG_MONITOR_INITIAL_DELAY_MS:15000}
+    lag-monitor-fixed-delay-ms: ${ROCKETMQ_LAG_MONITOR_FIXED_DELAY_MS:15000}
