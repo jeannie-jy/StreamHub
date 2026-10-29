@@ -54,6 +54,7 @@ Authorization: Bearer <accessToken>
 | GET | /api/v1/live/ping | 否 | 存活检查 |
 | POST | /api/v1/live/rooms | 是 | 创建直播间 |
 | GET | /api/v1/live/rooms/{roomId} | 否 | 查询直播间 |
+| GET | /api/v1/live/rooms/{roomId}/online-count | 否 | 查询去重在线人数，data 为 {"onlineCount": 数字}；观众页面每 15 秒刷新，隐藏时暂停，重新可见时立即刷新 |
 | POST | /api/v1/live/rooms/{roomId}/start | 是 | 开始直播并返回 SRS 地址 |
 | POST | /api/v1/live/rooms/{roomId}/end | 是 | 结束直播 |
 | GET | /api/v1/live/rooms/{roomId}/messages?afterId=0&limit=50 | 否 | 拉取历史弹幕，limit 最大 100 |

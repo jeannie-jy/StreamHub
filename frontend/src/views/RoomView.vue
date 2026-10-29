@@ -10,6 +10,7 @@ import GiftPanel from '@/components/GiftPanel.vue'
 import Icon from '@/components/Icon.vue'
 import RankList from '@/components/RankList.vue'
 import VideoPlayer from '@/components/VideoPlayer.vue'
+import { useRoomOnlineCount } from '@/composables/useRoomOnlineCount'
 import { useAuthStore } from '@/stores/auth'
 import { useUserStore } from '@/stores/user'
 import type { Activity, LiveRoom, UserProfile } from '@/types/api'
@@ -29,6 +30,7 @@ const favorite = ref(false)
 const followLoading = ref(false)
 const favoriteLoading = ref(false)
 const roomId = Number(route.params.roomId)
+useRoomOnlineCount(roomId, room)
 
 onMounted(load)
 watch(() => auth.userId, () => void loadPersonalState())

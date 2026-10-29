@@ -103,6 +103,7 @@ public class TokenAuthenticationFilter implements GlobalFilter, Ordered {
                         || "/api/v1/users/ping".equals(path)
                         || numericIdPath(path, "/api/v1/users/")
                         || numericIdPath(path, "/api/v1/live/rooms/")
+                        || path.matches("/api/v1/live/rooms/\\d+/online-count")
                         || path.matches("/api/v1/live/rooms/\\d+/activities")
                         || path.matches("/api/v1/live/rooms/\\d+/messages")
                         || path.matches("/api/v1/live/rooms/\\d+/gift-rank")

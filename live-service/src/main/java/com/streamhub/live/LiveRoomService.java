@@ -74,6 +74,11 @@ public class LiveRoomService {
         return toView(findRoom(roomId), null);
     }
 
+    public long onlineCount(long roomId) {
+        findRoom(roomId);
+        return onlinePresenceService.onlineCount(roomId);
+    }
+
     public PageResult<LiveRoomView> page(String status, String category, String keyword, int page, int pageSize, Long anchorId) {
         PageResult<LiveRoom> result = liveRoomRepository.page(status, category, keyword, page, pageSize, anchorId);
         List<LiveRoomView> items = result.items().stream().map(room -> toView(room, null)).toList();

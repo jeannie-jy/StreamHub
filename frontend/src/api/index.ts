@@ -47,6 +47,7 @@ export const liveApi = {
   mine: (params: { page?: number; pageSize?: number } = {}) =>
     request<PageResult<LiveRoom>>({ method: 'GET', url: '/v1/live/rooms/mine', params }),
   room: (roomId: number) => request<LiveRoom>({ method: 'GET', url: `/v1/live/rooms/${roomId}`, skipAuthRefresh: true }),
+  onlineCount: (roomId: number) => request<{ onlineCount: number }>({ method: 'GET', url: `/v1/live/rooms/${roomId}/online-count`, skipAuthRefresh: true }),
   createRoom: (body: { title: string; category: string; coverUrl?: string | null }) =>
     request<LiveRoom>({ method: 'POST', url: '/v1/live/rooms', data: body }),
   updateRoom: (roomId: number, body: { title: string; category: string; coverUrl?: string | null }) =>

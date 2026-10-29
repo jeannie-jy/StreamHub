@@ -56,6 +56,11 @@ public class LiveRoomController {
         return ApiResponse.success(liveRoomService.get(roomId));
     }
 
+    @GetMapping("/{roomId}/online-count")
+    public ApiResponse<java.util.Map<String, Long>> onlineCount(@PathVariable long roomId) {
+        return ApiResponse.success(java.util.Map.of("onlineCount", liveRoomService.onlineCount(roomId)));
+    }
+
     @GetMapping("/following")
     public ApiResponse<PageResult<LiveRoomView>> following(
             @RequestParam(defaultValue = "1") int page,

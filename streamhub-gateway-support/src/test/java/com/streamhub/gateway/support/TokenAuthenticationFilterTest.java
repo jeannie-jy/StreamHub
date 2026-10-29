@@ -16,6 +16,13 @@ class TokenAuthenticationFilterTest {
     }
 
     @Test
+    void onlineCountIsPublicOnlyForNumericRoomReads() {
+        assertThat(filter.isPublic("/api/v1/live/rooms/88/online-count", HttpMethod.GET)).isTrue();
+        assertThat(filter.isPublic("/api/v1/live/rooms/88/online-count", HttpMethod.POST)).isFalse();
+        assertThat(filter.isPublic("/api/v1/live/rooms/mine/online-count", HttpMethod.GET)).isFalse();
+    }
+
+    @Test
     void publicGiftCatalogDoesNotMakeWritesPublic() {
         assertThat(filter.isPublic("/api/v1/gifts", HttpMethod.GET)).isTrue();
         assertThat(filter.isPublic("/api/v1/gifts", HttpMethod.POST)).isFalse();
